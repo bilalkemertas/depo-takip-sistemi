@@ -4,7 +4,7 @@ from datetime import datetime
 from streamlit_gsheets import GSheetsConnection
 
 # --- SAYFA AYARLARI ---
-st.set_page_config(page_title="Depo X-Ray v8.0", layout="centered", page_icon="🛡️")
+st.set_page_config(page_title="Bilal Adresli Depo Simülasyon", layout="centered", page_icon="🛡️")
 st.title("🛡️ Depo X-Ray: Master Data Kontrollü")
 
 conn = st.connection("gsheets", type=GSheetsConnection)

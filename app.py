@@ -3,52 +3,49 @@ import pandas as pd
 from datetime import datetime
 from streamlit_gsheets import GSheetsConnection
 import os
-import streamlit.components.v1 as components
 
-# --- 1. SAYFA AYARLARI VE TAM GİZLEME ---
-st.set_page_config(page_title="Depo X-Ray v9.6", layout="centered", page_icon="brn_logo.webp")
+# --- 1. SAYFA AYARLARI VE "NÜKLEER" GİZLEME SEÇENEĞİ ---
+st.set_page_config(page_title="Depo X-Ray v9.7", layout="centered", page_icon="brn_logo.webp")
 
-# CSS: Görünen tüm Streamlit elementlerini gizle
-hide_style = """
+# Bu CSS bloğu, Streamlit'in tüm toolbar, footer ve banner sınıflarını hedefler.
+hide_all_streamlit_elements = """
     <style>
+    /* 1. Standart Streamlit Öğeleri */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
     .stDeployButton {display:none !important;}
+    
+    /* 2. Toolbar ve Dekorasyonlar */
     div[data-testid="stToolbar"] {display: none !important;}
     div[data-testid="stDecoration"] {display: none !important;}
+    div[data-testid="stStatusWidget"] {display: none !important;}
     
-    /* Manage App butonunun tüm olası sınıflarını hedefle */
-    [data-testid="bundle-viewer-button"] {display: none !important;}
-    div[class^="viewerBadge"] {display: none !important;}
+    /* 3. "MANAGE APP" VE "FORK" BANNERLARI (KRİTİK) */
+    /* Streamlit Cloud bannerlarını ve butonlarını hem mobilde hem masaüstünde hedefler */
+    div[class^="viewerBadge_container"] {display: none !important;}
+    div[class^="stAppViewBlockContainer"] header {display: none !important;}
     button[title="Manage app"] {display: none !important;}
+    [data-testid="bundle-viewer-button"] {display: none !important;}
     
-    /* El terminali için ekranı genişlet */
-    .block-container {padding-top: 1rem; padding-bottom: 0rem;}
+    /* 4. Ekranı terminale tam sığdırmak için paddingler */
+    .block-container {
+        padding-top: 0rem;
+        padding-bottom: 0rem;
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+    
+    /* 5. Mobilde üstteki boşluğu sıfırla */
+    .stApp {
+        margin-top: -50px;
+    }
     </style>
-    """
-st.markdown(hide_style, unsafe_allow_html=True)
-
-# JAVASCRIPT: CSS'in yetmediği durumlarda butonu DOM'dan kazıyan kod
-components.html(
-    """
-    <script>
-    const observer = new MutationObserver((mutations) => {
-        const manageAppButton = window.parent.document.querySelector('button[title="Manage app"]') || 
-                               window.parent.document.querySelector('[data-testid="bundle-viewer-button"]') ||
-                               window.parent.document.querySelector('div[class^="viewerBadge"]');
-        if (manageAppButton) {
-            manageAppButton.style.display = 'none';
-            manageAppButton.style.visibility = 'hidden';
-        }
-    });
-    observer.observe(window.parent.document.body, { childList: true, subtree: true });
-    </script>
-    """,
-    height=0,
-)
+"""
+st.markdown(hide_all_streamlit_elements, unsafe_allow_html=True)
 
 # --- 2. KULLANICI DOĞRULAMA ---
+# (Buradaki kodlar v9.6 ile aynı, bağlantı ve mantık değişmedi)
 try:
     USERS = st.secrets["users"]
 except:
@@ -58,7 +55,7 @@ if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
 if not st.session_state.logged_in:
-    st.markdown("<h2 style='text-align: center;'>🔒 Giriş</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center; margin-top: 50px;'>🔒 Giriş</h2>", unsafe_allow_html=True)
     with st.form("Login"):
         u = st.text_input("Kullanıcı:")
         p = st.text_input("Parola:", type="password")
@@ -102,7 +99,7 @@ def kayit_ekle(islem, adr, kod, ad, brm, mik):
     })
     conn.update(data=pd.concat([df_t, yeni], ignore_index=True), worksheet="Sayfa1")
 
-# --- 4. ARAYÜZ ---
+# --- 4. ARAYÜZ (LOGO VE KULLANICI BİLGİSİ) ---
 c_l, c_u, c_o = st.columns([1, 3, 1])
 with c_l:
     if os.path.exists("brn_logo.webp"): st.image("brn_logo.webp", width=45)
@@ -165,4 +162,4 @@ with t3:
             stok = stok[(stok['Adres'].str.contains(ara)) | (stok['Kod'].str.contains(ara)) | (stok['Ürün'].str.contains(ara))]
         st.dataframe(stok, use_container_width=True, hide_index=True)
 
-st.markdown("<div style='text-align:center; color:gray; font-size:10px;'>BRN X-Ray v9.6</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align:center; color:gray; font-size:10px;'>BRN X-Ray v9.7</div>", unsafe_allow_html=True)

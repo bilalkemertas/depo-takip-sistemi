@@ -3,36 +3,50 @@ import pandas as pd
 from datetime import datetime
 from streamlit_gsheets import GSheetsConnection
 import os
+import streamlit.components.v1 as components
 
-# --- 1. SAYFA AYARLARI VE AGRESİF GİZLEME (CSS) ---
-st.set_page_config(page_title="Depo X-Ray v9.5", layout="centered", page_icon="brn_logo.webp")
+# --- 1. SAYFA AYARLARI VE TAM GİZLEME ---
+st.set_page_config(page_title="Depo X-Ray v9.6", layout="centered", page_icon="brn_logo.webp")
 
-# "Manage app" butonu ve diğer araç çubuklarını tamamen kapatan güncel CSS
-# viewerBadge ile başlayan sınıflar Streamlit'in sağ alt butonunu hedefler.
+# CSS: Görünen tüm Streamlit elementlerini gizle
 hide_style = """
     <style>
-    /* Streamlit öğelerini gizle */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
-    
-    /* Sağ üstteki Deploy butonu ve araç çubuğu */
     .stDeployButton {display:none !important;}
     div[data-testid="stToolbar"] {display: none !important;}
     div[data-testid="stDecoration"] {display: none !important;}
     
-    /* SAĞ ALTTAKİ MANAGE APP BUTONU İÇİN KRİTİK BÖLÜM */
-    div[class^="viewerBadge_container"] {display: none !important;}
+    /* Manage App butonunun tüm olası sınıflarını hedefle */
+    [data-testid="bundle-viewer-button"] {display: none !important;}
+    div[class^="viewerBadge"] {display: none !important;}
     button[title="Manage app"] {display: none !important;}
     
-    /* Sayfa paddinglerini el terminali için optimize et */
-    .block-container {
-        padding-top: 1rem;
-        padding-bottom: 0rem;
-    }
+    /* El terminali için ekranı genişlet */
+    .block-container {padding-top: 1rem; padding-bottom: 0rem;}
     </style>
     """
 st.markdown(hide_style, unsafe_allow_html=True)
+
+# JAVASCRIPT: CSS'in yetmediği durumlarda butonu DOM'dan kazıyan kod
+components.html(
+    """
+    <script>
+    const observer = new MutationObserver((mutations) => {
+        const manageAppButton = window.parent.document.querySelector('button[title="Manage app"]') || 
+                               window.parent.document.querySelector('[data-testid="bundle-viewer-button"]') ||
+                               window.parent.document.querySelector('div[class^="viewerBadge"]');
+        if (manageAppButton) {
+            manageAppButton.style.display = 'none';
+            manageAppButton.style.visibility = 'hidden';
+        }
+    });
+    observer.observe(window.parent.document.body, { childList: true, subtree: true });
+    </script>
+    """,
+    height=0,
+)
 
 # --- 2. KULLANICI DOĞRULAMA ---
 try:
@@ -44,7 +58,7 @@ if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
 if not st.session_state.logged_in:
-    st.markdown("<h2 style='text-align: center;'>🔒 Giriş Yapın</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center;'>🔒 Giriş</h2>", unsafe_allow_html=True)
     with st.form("Login"):
         u = st.text_input("Kullanıcı:")
         p = st.text_input("Parola:", type="password")
@@ -88,7 +102,7 @@ def kayit_ekle(islem, adr, kod, ad, brm, mik):
     })
     conn.update(data=pd.concat([df_t, yeni], ignore_index=True), worksheet="Sayfa1")
 
-# --- 4. ARAYÜZ (LOGO VE ÇIKIŞ) ---
+# --- 4. ARAYÜZ ---
 c_l, c_u, c_o = st.columns([1, 3, 1])
 with c_l:
     if os.path.exists("brn_logo.webp"): st.image("brn_logo.webp", width=45)
@@ -107,7 +121,7 @@ with t1:
     c1, c2 = st.columns(2)
     i_tip = c1.selectbox("İşlem:", ["GİRİŞ", "ÇIKIŞ"])
     adr_v = c2.text_input("Adres:", "GENEL")
-    k_v = st.text_input("📦 Barkod Okutun:", key="barkod_kayit")
+    k_v = st.text_input("📦 Barkod:", key="barkod_kayit")
     
     ad_b, brm_b = urun_bilgisi_cek(k_v)
     if k_v and ad_b:
@@ -138,7 +152,7 @@ with t2:
                 st.rerun()
 
 with t3:
-    if st.button("🔄 Veriyi Yenile"): st.rerun()
+    if st.button("🔄 Yenile"): st.rerun()
     ara = st.text_input("🔍 Ara:").upper()
     if not df_hareketler.empty:
         df_h = df_hareketler.copy()
@@ -151,4 +165,4 @@ with t3:
             stok = stok[(stok['Adres'].str.contains(ara)) | (stok['Kod'].str.contains(ara)) | (stok['Ürün'].str.contains(ara))]
         st.dataframe(stok, use_container_width=True, hide_index=True)
 
-st.markdown("<div style='text-align:center; color:gray; font-size:10px;'>BRN X-Ray v9.5</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align:center; color:gray; font-size:10px;'>BRN X-Ray v9.6</div>", unsafe_allow_html=True)

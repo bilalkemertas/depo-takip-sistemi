@@ -4,10 +4,10 @@ from datetime import datetime
 from streamlit_gsheets import GSheetsConnection
 import os
 
-# --- 1. SAYFA AYARLARI VE GİZLEME (CSS) ---
-st.set_page_config(page_title="Depo X-Ray v9.3", layout="centered", page_icon="brn_logo.webp")
+# --- 1. SAYFA AYARLARI VE TAM GİZLEME (CSS) ---
+st.set_page_config(page_title="Depo X-Ray v9.4", layout="centered", page_icon="brn_logo.webp")
 
-# Sağ alttaki "Manage app", üstteki banner ve menüleri tamamen gizleyen profesyonel CSS
+# Sağ alttaki 'Manage app', 'Made with Streamlit' ve üst bannerları tamamen yok eden kod
 hide_style = """
     <style>
     #MainMenu {visibility: hidden;}
@@ -25,10 +25,9 @@ st.markdown(hide_style, unsafe_allow_html=True)
 try:
     USERS = st.secrets["users"]
 except Exception:
-    # Eğer Secrets ayarlanmamışsa hata vermemesi için varsayılan
+    # Secrets ayarlanmamışsa yedek giriş
     USERS = {"admin": "1234"}
 
-# Giriş Durumu Kontrolü
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.user = ""
@@ -64,7 +63,6 @@ def taze_veri_getir(worksheet="Sayfa1"):
     except:
         return pd.DataFrame()
 
-# Verileri çek
 df_urunler = taze_veri_getir(worksheet="Urun_Listesi")
 df_hareketler = taze_veri_getir(worksheet="Sayfa1")
 
@@ -109,20 +107,19 @@ t1, t2, t3 = st.tabs(["📥 Kayıt", "🔄 Transfer", "🔍 Rapor"])
 
 with t1:
     c1, c2 = st.columns(2)
-    islem_tipi = c1.selectbox("İşlem:", ["GİRİŞ", "ÇIKIŞ"])
-    adr = c2.text_input("Adres:", value="GENEL")
-    kod = st.text_input("📦 Ürün Kodunu Okutun:")
-    ad_bulunan, birim_bulunan = urun_bilgisi_cek(kod)
+    is_tip = c1.selectbox("İşlem:", ["GİRİŞ", "ÇIKIŞ"])
+    adr_val = c2.text_input("Adres:", value="GENEL")
+    kod_val = st.text_input("📦 Ürün Kodu:")
     
-    if kod:
-        if ad_bulunan:
-            st.success(f"{ad_bulunan} ({birim_bulunan})")
-            # Birim Adet değilse küsürat aç
-            step_val = 0.001 if str(birim_bulunan).upper() not in ["ADET", "ADT", "AD"] else 1.0
-            mik = st.number_input(f"Miktar:", min_value=0.0, step=step_val)
-            if st.button(f"{islem_tipi} KAYDET", use_container_width=True):
-                if mik > 0:
-                    kayit_ekle(islem_tipi, adr, kod, ad_bulunan, birim_bulunan, mik)
+    ad_bul, birim_bul = urun_bilgisi_cek(kod_val)
+    if kod_val:
+        if ad_bul:
+            st.success(f"{ad_bul} ({birim_bul})")
+            step_v = 0.001 if str(birim_bul).upper() not in ["ADET", "ADT", "AD"] else 1.0
+            mik_val = st.number_input("Miktar:", min_value=0.0, step=step_v)
+            if st.button(f"{is_tip} KAYDET", use_container_width=True):
+                if mik_val > 0:
+                    kayit_ekle(is_tip, adr_val, kod_val, ad_bul, birim_bul, mik_val)
                     st.success("Kaydedildi!")
                     st.rerun()
         else: st.error("Ürün Tanımsız!")
@@ -131,10 +128,39 @@ with t2:
     tr_kod = st.text_input("Transfer Ürün Kod:", key="tr_k")
     tr_ad, tr_birim = urun_bilgisi_cek(tr_kod)
     if tr_kod and tr_ad:
-        st.info(f"Transfer: {tr_ad}")
+        st.info(f"Ürün: {tr_ad}")
         ca, cb = st.columns(2)
         n_den = ca.text_input("Nereden:", value="GENEL")
         n_ye = cb.text_input("Nereye:")
-        tr_mik = st.number_input("Miktar:", min_value=0.0, key="tr_mik")
+        tr_mik = st.number_input("Miktar:", min_value=0.0, key="tr_mik_val")
         if st.button("TRANSFERİ TAMAMLA", use_container_width=True):
-            if n_ye and tr_mik >
+            if n_ye and tr_mik > 0: # Hata buradaydı, düzeltildi.
+                kayit_ekle("ÇIKIŞ", n_den, tr_kod, tr_ad, tr_birim, tr_mik)
+                kayit_ekle("GİRİŞ", n_ye, tr_kod, tr_ad, tr_birim, tr_mik)
+                st.success("Başarıyla Taşındı.")
+                st.rerun()
+
+with t3:
+    col_t, col_b = st.columns([2, 1])
+    col_t.caption("📊 Mevcut Stoklar")
+    if col_b.button("🔄 Yenile"): st.rerun()
+    
+    search = st.text_input("🔍 Ara:", placeholder="Kod, İsim veya Adres...")
+    
+    if not df_hareketler.empty:
+        df_h = df_hareketler.copy()
+        if 'Birim' in df_h.columns:
+            df_h['Miktar'] = pd.to_numeric(df_h['Miktar'], errors='coerce').fillna(0)
+            df_h['Net'] = df_h.apply(lambda r: r['Miktar'] if str(r['İşlem']).upper() == 'GİRİŞ' else -r['Miktar'], axis=1)
+            stok = df_h.groupby(['Adres', 'Malzeme Kodu', 'Malzeme Adı', 'Birim'])['Net'].sum().reset_index()
+            stok = stok[stok['Net'] > 0]
+            stok.columns = ["Adr", "Kod", "Ad", "Brm", "Miktar"]
+            if search:
+                s = search.upper()
+                stok = stok[(stok['Adr'].str.upper().str.contains(s, na=False)) | 
+                            (stok['Kod'].str.upper().str.contains(s, na=False)) | 
+                            (stok['Ad'].str.upper().str.contains(s, na=False))]
+            st.dataframe(stok, use_container_width=True, hide_index=True)
+
+# --- 6. İMZA ---
+st.markdown(f"<div style='text-align: center; color: gray; font-size: 0.7em; margin-top: 30px;'>🛡️ BRN Depo X-Ray v9.4 | Tasarlayan: [SENİN ADIN]</div>", unsafe_allow_html=True)

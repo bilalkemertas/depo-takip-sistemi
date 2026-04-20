@@ -193,7 +193,6 @@ with t3:
 st.markdown("<br><br>", unsafe_allow_html=True)
 st.markdown(
     "<div style='text-align: center; color: #888888; font-size: 12px; padding-top: 10px; border-top: 1px solid #e0e0e0;'>"
-    "<b>BRN SLEEP PRODUCTS</b><br>BİLAL KEMERTAŞ"
-    "</div>", 
+    "<b>BRN SLEEP PRODUCTS</b><br>BİLAL KEMERTAŞ"    "</div>", 
     unsafe_allow_html=True
 )

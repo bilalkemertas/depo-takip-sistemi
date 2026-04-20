@@ -123,4 +123,4 @@ with t3:
         else: st.warning("Excel'de 'Birim' sütunu eksik!")
 
 # --- İMZA ---
-st.markdown("<div style='text-align: center; color: gray; font-size: 0.7em; margin-top: 20px;'>Bilal BRN Depo  | Tasarlayan: [BİLAL KEMERTAŞ]</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align: center; color: gray; font-size: 0.7em; margin-top: 20px;'>BRN SLEEP PRODUCTS  | Tasarlayan: [BİLAL KEMERTAŞ]</div>", unsafe_allow_html=True)

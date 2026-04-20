@@ -5,7 +5,7 @@ from streamlit_gsheets import GSheetsConnection
 
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Bilal Adresli Depo Simülasyon", layout="centered", page_icon="🛡️")
-st.title("🛡️ Depo X-Ray: Master Data Kontrollü")
+st.title("🛡️ Adresli Depo Simülasyon")
 
 conn = st.connection("gsheets", type=GSheetsConnection)
 

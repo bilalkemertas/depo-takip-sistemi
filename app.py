@@ -3,136 +3,114 @@ import pandas as pd
 from datetime import datetime
 from streamlit_gsheets import GSheetsConnection
 
-# --- SAYFA AYARLARI VE ÖZEL İSİM ---
-st.set_page_config(page_title="Depo X-Ray v1.0", layout="centered", page_icon="🛡️")
+# --- SAYFA AYARLARI ---
+st.set_page_config(page_title="Depo X-Ray v8.0", layout="centered", page_icon="🛡️")
+st.title("🛡️ Depo X-Ray: Master Data Kontrollü")
 
-# Sistemin Yeni Adı
-st.title("🛡️ Bilal: Adres Takip Sistemi")
-st.markdown("---") 
-
-# Google Sheets Bağlantısı
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-def taze_veri_getir():
+def taze_veri_getir(worksheet="Sayfa1"):
     st.cache_data.clear()
-    df = conn.read(ttl=0)
+    # Hem hareketleri hem de ürün listesini çekiyoruz
+    df = conn.read(ttl=0, worksheet=worksheet)
     if not df.empty:
         df.columns = df.columns.str.strip()
     return df
 
-def isim_dogrula(kod, ad, mevcut_df):
-    kod_str = str(kod).strip().upper()
-    ad_str = str(ad).strip().upper() if ad and str(ad).strip() != "" else ""
-    if (not ad_str or ad_str == "-") and not mevcut_df.empty:
-        gecmis = mevcut_df[mevcut_df['Malzeme Kodu'].astype(str).str.upper() == kod_str]
-        if not gecmis.empty:
-            gecerli_isimler = gecmis[(gecmis['Malzeme Adı'].notna()) & (gecmis['Malzeme Adı'].astype(str) != "-")]
-            if not gecerli_isimler.empty:
-                return gecerli_isimler.iloc[-1]['Malzeme Adı']
-    return ad_str if ad_str else "-"
+# --- MASTER DATA KONTROLÜ ---
+df_urunler = taze_veri_getir(worksheet="Urun_Listesi") # Ürün kartlarının olduğu sayfa
+df_hareketler = taze_veri_getir(worksheet="Sayfa1")    # Hareketlerin olduğu sayfa
 
-def kayit_ekle(islem, adres, kod, ad, miktar, taze_df):
-    tam_ad = isim_dogrula(kod, ad, taze_df)
+def urun_bilgisi_cek(kod):
+    if not df_urunler.empty and kod:
+        match = df_urunler[df_urunler['Malzeme Kodu'].astype(str).str.upper() == str(kod).upper()]
+        if not match.empty:
+            return match.iloc[0]['Malzeme Adı'], match.iloc[0]['Birim']
+    return None, None
+
+def kayit_ekle(islem, adres, kod, ad, birim, miktar):
+    df_temp = taze_veri_getir(worksheet="Sayfa1")
     yeni_kayit = pd.DataFrame({
         "Tarih": [datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
         "İşlem": [islem],
         "Adres": [str(adres).upper()],
         "Malzeme Kodu": [str(kod).upper()],
-        "Malzeme Adı": [tam_ad.upper()],
+        "Malzeme Adı": [str(ad).upper()],
+        "Birim": [str(birim).upper()], # Artık birim de kaydediliyor
         "Miktar": [float(miktar)]
     })
-    return yeni_kayit
+    conn.update(data=pd.concat([df_temp, yeni_kayit], ignore_index=True), worksheet="Sayfa1")
 
-# Başlangıç Verisi
-if 'df' not in st.session_state:
-    st.session_state.df = taze_veri_getir()
-
-t1, t2, t3, t4 = st.tabs(["📥 Giriş", "📤 Çıkış", "🔄 Transfer", "🔍 Stok Sorgula"])
+# Sekmeler
+t1, t2, t3 = st.tabs(["📥 Hareket Kaydı (Giriş/Çıkış)", "🔄 Transfer", "🔍 Stok Sorgula"])
 
 with t1:
-    st.subheader("Malzeme Girişi")
-    g_adr = st.text_input("Adres:", value="GENEL", key="g_adr")
-    g_kod = st.text_input("Ürün Kodu:", key="g_k")
-    g_ad = st.text_input("Ürün Adı (Otomatik):", key="g_a")
-    g_mik = st.number_input("Miktar:", min_value=0.0, step=1.0, key="g_m")
-    if st.button("📥 Kaydı Tamamla", use_container_width=True):
-        if g_kod and g_mik > 0:
-            df_curr = taze_veri_getir()
-            yeni = kayit_ekle("GİRİŞ", g_adr, g_kod, g_ad, g_mik, df_curr)
-            conn.update(data=pd.concat([df_curr, yeni], ignore_index=True))
-            st.success("Sisteme İşlendi.")
-            st.session_state.df = taze_veri_getir()
-            st.rerun()
+    col_islem, col_adr = st.columns(2)
+    islem_tipi = col_islem.selectbox("İşlem Tipi:", ["GİRİŞ", "ÇIKIŞ"])
+    adr = col_adr.text_input("Adres:", value="GENEL")
+    
+    kod = st.text_input("📦 Ürün Kodunu Okutun/Yazın:")
+    
+    # MASTER DATA SORGUSU
+    ad_bulunan, birim_bulunan = urun_bilgisi_cek(kod)
+    
+    if kod:
+        if ad_bulunan:
+            st.info(f"✅ Ürün: **{ad_bulunan}** | Birim: **{birim_bulunan}**")
+            
+            # KÜSÜRAT KISITI: Birim 'Adet' ise küsüratı engelle
+            is_decimal = False if str(birim_bulunan).upper() in ["ADET", "ADT", "AD"] else True
+            step_val = 0.001 if is_decimal else 1.0
+            
+            mik = st.number_input(f"Miktar ({birim_bulunan}):", min_value=0.0, step=step_val)
+            
+            if st.button(f"{islem_tipi} Kaydet", use_container_width=True):
+                if mik > 0:
+                    kayit_ekle(islem_tipi, adr, kod, ad_bulunan, birim_bulunan, mik)
+                    st.success("İşlem Başarılı!")
+                    st.rerun()
+        else:
+            st.error("⚠️ Bu ürün kodu 'Urun_Listesi' sayfasında tanımlı değil! Lütfen önce tanımlayın.")
 
 with t2:
-    st.subheader("Malzeme Çıkışı")
-    c_adr = st.text_input("Adres:", value="GENEL", key="c_adr")
-    c_kod = st.text_input("Ürün Kodu:", key="c_k")
-    c_ad = st.text_input("Ürün Adı (Otomatik):", key="c_a")
-    c_mik = st.number_input("Miktar:", min_value=0.0, step=1.0, key="c_m")
-    if st.button("📤 Çıkışı Onayla", use_container_width=True):
-        if c_kod and c_mik > 0:
-            df_curr = taze_veri_getir()
-            yeni = kayit_ekle("ÇIKIŞ", c_adr, c_kod, c_ad, c_mik, df_curr)
-            conn.update(data=pd.concat([df_curr, yeni], ignore_index=True))
-            st.success("Çıkış Tamamlandı.")
-            st.session_state.df = taze_veri_getir()
-            st.rerun()
+    st.subheader("🔄 Adres Transferi")
+    tr_kod = st.text_input("Transfer Ürün Kodu:", key="tr_k")
+    tr_ad, tr_birim = urun_bilgisi_cek(tr_kod)
+    
+    if tr_kod and tr_ad:
+        st.info(f"Ürün: {tr_ad} ({tr_birim})")
+        c1, c2 = st.columns(2)
+        n_den = c1.text_input("Nereden:", value="GENEL")
+        n_ye = c2.text_input("Nereye:")
+        
+        tr_step = 0.001 if str(tr_birim).upper() not in ["ADET", "ADT"] else 1.0
+        tr_mik = st.number_input("Miktar:", min_value=0.0, step=tr_step)
+        
+        if st.button("Transferi Onayla"):
+            if n_ye and tr_mik > 0:
+                kayit_ekle("ÇIKIŞ", n_den, tr_kod, tr_ad, tr_birim, tr_mik)
+                kayit_ekle("GİRİŞ", n_ye, tr_kod, tr_ad, tr_birim, tr_mik)
+                st.success("Transfer Tamamlandı.")
+                st.rerun()
+    elif tr_kod:
+        st.warning("Ürün bulunamadı.")
 
 with t3:
-    st.subheader("🔄 Adres Değişikliği (Transfer)")
-    tr_kod = st.text_input("Ürün Kodu:", key="tr_k")
-    col_a, col_b = st.columns(2)
-    tr_nereden = col_a.text_input("Nereden:", value="GENEL")
-    tr_nereye = col_b.text_input("Nereye:", placeholder="Hedef Adres")
-    tr_mik = st.number_input("Miktar:", min_value=0.0, step=1.0, key="tr_m")
+    c1, c2 = st.columns([3, 1])
+    c1.subheader("📊 Anlık Stok Durumu")
+    if c2.button("🔄 Verileri Yenile"): st.rerun()
     
-    if st.button("🔄 Transferi Başlat", use_container_width=True):
-        if tr_kod and tr_nereye and tr_mik > 0:
-            df_curr = taze_veri_getir()
-            cikis_satir = kayit_ekle("ÇIKIŞ", tr_nereden, tr_kod, "", tr_mik, df_curr)
-            giris_satir = kayit_ekle("GİRİŞ", tr_nereye, tr_kod, "", tr_mik, df_curr)
-            conn.update(data=pd.concat([df_curr, cikis_satir, giris_satir], ignore_index=True))
-            st.success("Lokasyon Güncellendi.")
-            st.session_state.df = taze_veri_getir()
-            st.rerun()
-
-with t4:
-    col1, col2 = st.columns([3, 1])
-    col1.subheader("🔍 Mevcut Durum")
-    if col2.button("🔄 Yenile"):
-        st.session_state.df = taze_veri_getir()
-        st.rerun()
-    
-    search = st.text_input("Sorgu Ekranı (Okutun veya Yazın):")
-    df_ana = st.session_state.df
-    if not df_ana.empty:
-        df_ana['Miktar'] = pd.to_numeric(df_ana['Miktar'], errors='coerce').fillna(0)
-        df_ana['Net'] = df_ana.apply(lambda r: r['Miktar'] if str(r['İşlem']).upper() == 'GİRİŞ' else -r['Miktar'], axis=1)
-        valid_names = df_ana[df_ana['Malzeme Adı'] != "-"].sort_values('Tarih')
-        isim_map = valid_names.groupby('Malzeme Kodu')['Malzeme Adı'].last().to_dict()
-        df_ana['Ürün Adı'] = df_ana['Malzeme Kodu'].map(isim_map).fillna(df_ana['Malzeme Adı'])
+    if not df_hareketler.empty:
+        df_h = df_hareketler.copy()
+        df_h['Miktar'] = pd.to_numeric(df_h['Miktar'], errors='coerce').fillna(0)
+        df_h['Net'] = df_h.apply(lambda r: r['Miktar'] if str(r['İşlem']).upper() == 'GİRİŞ' else -r['Miktar'], axis=1)
         
-        stok = df_ana.groupby(['Adres', 'Malzeme Kodu', 'Ürün Adı'])['Net'].sum().reset_index()
+        # PİVOT - Birim bazlı net stok
+        stok = df_h.groupby(['Adres', 'Malzeme Kodu', 'Malzeme Adı', 'Birim'])['Net'].sum().reset_index()
         stok = stok[stok['Net'] > 0]
-        stok.columns = ["Adres", "Kod", "Ürün Adı", "Miktar"]
-        
-        if search:
-            t = search.upper()
-            mask = (stok['Adres'].str.upper().str.contains(t, na=False) | 
-                    stok['Kod'].str.upper().str.contains(t, na=False) | 
-                    stok['Ürün Adı'].str.upper().str.contains(t, na=False))
-            stok = stok[mask]
+        stok.columns = ["Adres", "Kod", "Ürün Adı", "Birim", "Miktar"]
         st.dataframe(stok, use_container_width=True, hide_index=True)
 
-# --- İMZA BÖLÜMÜ ---
+# --- İMZA ---
 st.markdown("---")
-st.markdown(
-    """
-    <div style="text-align: center; color: gray; font-size: 0.8em;">
-        Tasarlayan ve Geliştiren: <b>[Bilal KEMERTAŞ]</b> <br>
-        <i>🛡️ Depo X-Ray v1.0 | 2024</i>
-    </div>
-    """, 
-    unsafe_allow_html=True
-)
+st.markdown(f'<div style="text-align: center; color: gray;">Geliştiren: <b>[SENİN ADIN]</b></div>', unsafe_allow_html=True)

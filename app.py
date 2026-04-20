@@ -16,9 +16,22 @@ hide_style = """
     </style>
     """
 
-# --- SAYFA AYARLARI ---
-st.set_page_config(page_title="Depo X-Ray v9.2", layout="centered", page_icon="brn_logo.webp")
-st.markdown(hide_style, unsafe_allow_html=True)
+
+# 1. Sayfa Ayarları (En üstte olmalı)
+st.set_page_config(page_title="Depo X-Ray", layout="centered")
+
+# 2. "Manage App" ve Menü Gizleme CSS (Kritik Bölüm)
+hide_streamlit_style = """
+            <style>
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            .viewerBadge_container__1QS1n {display: none !important;}
+            header {visibility: hidden;}
+            </style>
+            """
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+
+# Geri kalan kodların (Giriş ekranı, logo vb.) buradan devam edecek...
 
 # --- KULLANICI DOĞRULAMA (Hatanın düzeltildiği yer) ---
 try:

@@ -18,7 +18,7 @@ with col_logo:
 
 with col_baslik:
     # HTML kullanarak başlığı yukarı kaydırdık ve dikey hizaladık
-    st.markdown("<h3 style='margin: 0; padding-top: 5px;'>Depo X-Ray v8.3</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='margin: 0; padding-top: 5px;'>Bilal BRN Adresli Depo Simülasyonu</h3>", unsafe_allow_html=True)
 
 st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True) # Çok ince ve dar ara çizgi
 

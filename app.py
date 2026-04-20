@@ -41,7 +41,7 @@ if not st.session_state.logged_in:
 conn = st.connection("gsheets", type=GSheetsConnection)
 SHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
 
-# --- 4. ENVANTER GÜNCELLEME FONKSİYONU ---
+# --- 4. ENVANTER GÜNCELLEME FONKSİYONU (AYNI KALDI) ---
 def update_stock_record(kod, isim, adres, birim, miktar, is_increase=True):
     try:
         stok_df = conn.read(spreadsheet=SHEET_URL, worksheet="Stok", ttl=0)
@@ -52,7 +52,6 @@ def update_stock_record(kod, isim, adres, birim, miktar, is_increase=True):
     if not stok_df.empty:
         stok_df['Miktar'] = pd.to_numeric(stok_df['Miktar'], errors='coerce').fillna(0)
         mask = (stok_df['Kod'] == kod) & (stok_df['Adres'] == adres) & (stok_df['Birim'] == birim)
-        
         if mask.any():
             if is_increase: stok_df.loc[mask, 'Miktar'] += miktar
             else: stok_df.loc[mask, 'Miktar'] -= miktar
@@ -90,7 +89,6 @@ with t1:
         c1, c2 = st.columns(2)
         with c1: unit = st.selectbox("Birim:", ["ADET", "METRE", "KG", "RULO"], key="u1")
         with c2: qty = st.number_input("Miktar:", min_value=0.1, value=1.0, key="m1")
-        
         if st.button("KAYDI TAMAMLA", use_container_width=True, type="primary"):
             log_df = conn.read(spreadsheet=SHEET_URL, worksheet="Sayfa1")
             new_log = pd.DataFrame([{"Tarih": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "İşlem": is_type, "Adres": adr, "Malzeme Kodu": kod, "Malzeme Adı": isim, "Birim": unit, "Miktar": qty, "Operatör": st.session_state.user}])
@@ -115,25 +113,24 @@ with t2:
             update_stock_record(t_kod, "TRANSFER", y_adr, t_unit, t_qty, is_increase=True)
             st.success("Transfer yapıldı.")
 
-# --- 📊 STOK SEKİMESİ (YENİ MOCKUP) ---
+# --- 📊 STOK SEKİMESİ (YENİ MOCKUP - SADECE GÖRSEL GÜNCELLEME) ---
 with t3:
     # Başlık ve Senkronizasyon Butonu Yan Yana
-    st_col1, st_col2 = st.columns([1.5, 1], vertical_alignment="bottom")
+    st_col1, st_col2 = st.columns([1.4, 1], vertical_alignment="bottom")
     with st_col1:
         st.subheader("🔍 Mevcut Stok")
     with st_col2:
-        sync_trigger = st.button("🔄 GEÇMİŞİ SENKRONİZE ET", use_container_width=True)
+        sync_trigger = st.button("🔄 SENKRONİZE ET", use_container_width=True)
 
     # Filtreleme (Full Width)
-    ara = st.text_input("Kod, İsim veya Adres ile Filtrele:", key="f_search").strip().upper()
+    ara = st.text_input("Kod, İsim veya Adres Ara:", key="f_search").strip().upper()
     
-    # Listeleme Butonu (Full Width)
-    refresh_trigger = st.button("LİSTEYİ YENİLE / GÖRÜNTÜLE", use_container_width=True, type="primary")
+    # Görüntüleme Butonu (Full Width)
+    refresh_trigger = st.button("LİSTEYİ GÖRÜNTÜLE / YENİLE", use_container_width=True, type="primary")
 
-    # Tüm sütunları kaplayan liste alanı
     st.divider()
     
-    # MANTIK AYNI KALDI
+    # 1. SENKRONİZE ETME MANTIĞI
     if sync_trigger:
         with st.spinner("Geçmiş veriler hesaplanıyor..."):
             st.cache_data.clear()
@@ -141,4 +138,29 @@ with t3:
             if not raw.empty:
                 raw['Miktar'] = pd.to_numeric(raw['Miktar'], errors='coerce').fillna(0)
                 raw['Net'] = raw.apply(lambda x: x['Miktar'] if x['İşlem'] == 'GİRİŞ' else (-x['Miktar'] if x['İşlem'] == 'ÇIKIŞ' else 0), axis=1)
-                names
+                
+                # Malzeme isimlerini eşleştirme (TRANSFER yazanları düzeltme)
+                lookup_names = raw[raw['Malzeme Adı'] != 'TRANSFER'].sort_values('Tarih').groupby('Malzeme Kodu')['Malzeme Adı'].last().to_dict()
+                raw['Malzeme Adı'] = raw['Malzeme Kodu'].map(lookup_names).fillna(raw['Malzeme Adı'])
+                
+                # Gruplandırma
+                summary = raw.groupby(['Adres', 'Malzeme Kodu', 'Malzeme Adı', 'Birim'])['Net'].sum().reset_index()
+                summary.columns = ['Adres', 'Kod', 'İsim', 'Birim', 'Miktar']
+                summary = summary[summary['Miktar'] > 0]
+                conn.update(spreadsheet=SHEET_URL, worksheet="Stok", data=summary)
+                st.success("Senkronizasyon Başarılı!")
+
+    # 2. GÖRÜNTÜLEME MANTIĞI (TAM GENİŞLİK)
+    if refresh_trigger or ara:
+        st.cache_data.clear()
+        try:
+            stok_data = conn.read(spreadsheet=SHEET_URL, worksheet="Stok", ttl=0)
+            if not stok_data.empty:
+                if ara:
+                    stok_data = stok_data[(stok_data['Kod'].str.contains(ara, na=False)) | (stok_data['Adres'].str.contains(ara, na=False)) | (stok_data['İsim'].str.contains(ara, na=False))]
+                # Filtrenin altındaki tüm alanı kullanır
+                st.dataframe(stok_data, use_container_width=True, hide_index=True)
+            else:
+                st.warning("Stok sekmesi boş.")
+        except:
+            st.error("Stok sekmesine erişilemedi.")

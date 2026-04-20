@@ -4,7 +4,7 @@ from datetime import datetime
 from streamlit_gsheets import GSheetsConnection
 
 # --- 1. SAYFA AYARLARI ---
-st.set_page_config(page_title="BRN Depo Yönetimi", layout="centered", page_icon="📦")
+st.set_page_config(page_title="BRN Depo Pro", layout="centered", page_icon="📦")
 
 st.markdown("""
     <style>
@@ -28,13 +28,13 @@ if not st.session_state.logged_in:
         if st.form_submit_button("SİSTEME GİRİŞ YAP", use_container_width=True):
             try:
                 users = st.secrets["users"]
-                u_in = u_raw.strip().lower()
-                if u_in in users and str(users[u_in]) == p_raw.strip():
+                u_lower = u_raw.strip().lower()
+                if u_lower in users and str(users[u_lower]) == p_raw.strip():
                     st.session_state.logged_in = True
-                    st.session_state.user = u_in
+                    st.session_state.user = u_lower
                     st.rerun()
                 else: st.error("Hatalı Giriş!")
-            except: st.error("Bağlantı ayarları eksik!")
+            except: st.error("Secrets bulunamadı!")
     st.stop()
 
 # --- 3. BAĞLANTI ---
@@ -43,19 +43,19 @@ SHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
 
 # --- 4. ENVANTER GÜNCELLEME FONKSİYONU ---
 def update_stock_record(kod, isim, adres, birim, miktar, is_increase=True):
-    # Mevcut Stok sayfasını oku
-    stok_df = conn.read(spreadsheet=SHEET_URL, worksheet="Stok", ttl=0)
+    try:
+        stok_df = conn.read(spreadsheet=SHEET_URL, worksheet="Stok", ttl=0)
+    except:
+        stok_df = pd.DataFrame(columns=['Adres', 'Kod', 'İsim', 'Birim', 'Miktar'])
     
+    miktar = float(miktar)
     if not stok_df.empty:
         stok_df['Miktar'] = pd.to_numeric(stok_df['Miktar'], errors='coerce').fillna(0)
-        # Eşleşen satırı bul
         mask = (stok_df['Kod'] == kod) & (stok_df['Adres'] == adres) & (stok_df['Birim'] == birim)
         
         if mask.any():
-            if is_increase:
-                stok_df.loc[mask, 'Miktar'] += miktar
-            else:
-                stok_df.loc[mask, 'Miktar'] -= miktar
+            if is_increase: stok_df.loc[mask, 'Miktar'] += miktar
+            else: stok_df.loc[mask, 'Miktar'] -= miktar
         else:
             if is_increase:
                 new_row = pd.DataFrame([{"Adres": adres, "Kod": kod, "İsim": isim, "Birim": birim, "Miktar": miktar}])
@@ -64,7 +64,6 @@ def update_stock_record(kod, isim, adres, birim, miktar, is_increase=True):
         if is_increase:
             stok_df = pd.DataFrame([{"Adres": adres, "Kod": kod, "İsim": isim, "Birim": birim, "Miktar": miktar}])
     
-    # Sıfırın altına düşen veya sıfır olan kayıtları temizle (opsiyonel)
     stok_df = stok_df[stok_df['Miktar'] > 0]
     conn.update(spreadsheet=SHEET_URL, worksheet="Stok", data=stok_df)
 
@@ -79,7 +78,7 @@ with h3:
 
 st.divider()
 
-# --- 6. ANA MODÜLLER ---
+# --- 6. MODÜLLER ---
 t1, t2, t3 = st.tabs(["📥 İşlem", "🔄 Transfer", "📊 Stok"])
 
 with t1:
@@ -92,15 +91,12 @@ with t1:
         with c1: unit = st.selectbox("Birim:", ["ADET", "METRE", "KG", "RULO"], key="u1")
         with c2: qty = st.number_input("Miktar:", min_value=0.1, value=1.0, key="m1")
         
-        if st.button("TAMAMLA", use_container_width=True, type="primary"):
-            # 1. Hareket Dökümünü Güncelle
-            df = conn.read(spreadsheet=SHEET_URL, worksheet="Sayfa1")
+        if st.button("KAYDI TAMAMLA", use_container_width=True, type="primary"):
+            log_df = conn.read(spreadsheet=SHEET_URL, worksheet="Sayfa1")
             new_log = pd.DataFrame([{"Tarih": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "İşlem": is_type, "Adres": adr, "Malzeme Kodu": kod, "Malzeme Adı": isim, "Birim": unit, "Miktar": qty, "Operatör": st.session_state.user}])
-            conn.update(spreadsheet=SHEET_URL, worksheet="Sayfa1", data=pd.concat([df, new_log]))
-            
-            # 2. Net Stok Sekmesini Güncelle
+            conn.update(spreadsheet=SHEET_URL, worksheet="Sayfa1", data=pd.concat([log_df, new_log]))
             update_stock_record(kod, isim, adr, unit, qty, is_increase=(is_type == "GİRİŞ"))
-            st.success("İşlem ve Stok Güncellendi!")
+            st.success("Kaydedildi!")
 
 with t2:
     with st.container(border=True):
@@ -110,34 +106,47 @@ with t2:
         t_kod = st.text_input("Kod:", key="b2").strip().upper()
         t_qty = st.number_input("Miktar:", min_value=0.1, value=1.0, key="tm2")
         t_unit = st.selectbox("Birim:", ["ADET", "METRE", "KG", "RULO"], key="tu2")
-        
-        if st.button("TRANSFER ET", use_container_width=True, type="primary"):
-            # 1. Hareket Dökümüne Çift Kayıt
-            df = conn.read(spreadsheet=SHEET_URL, worksheet="Sayfa1")
+        if st.button("TRANSFERİ ONAYLA", use_container_width=True, type="primary"):
+            log_df = conn.read(spreadsheet=SHEET_URL, worksheet="Sayfa1")
             c_log = pd.DataFrame([{"Tarih": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "İşlem": "ÇIKIŞ", "Adres": e_adr, "Malzeme Kodu": t_kod, "Malzeme Adı": "TRANSFER", "Birim": t_unit, "Miktar": t_qty, "Operatör": st.session_state.user}])
             g_log = pd.DataFrame([{"Tarih": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "İşlem": "GİRİŞ", "Adres": y_adr, "Malzeme Kodu": t_kod, "Malzeme Adı": "TRANSFER", "Birim": t_unit, "Miktar": t_qty, "Operatör": st.session_state.user}])
-            conn.update(spreadsheet=SHEET_URL, worksheet="Sayfa1", data=pd.concat([df, c_log, g_log]))
-            
-            # 2. Net Stok Sekmesini Güncelle (Eskiden düş, yeniye ekle)
+            conn.update(spreadsheet=SHEET_URL, worksheet="Sayfa1", data=pd.concat([log_df, c_log, g_log]))
             update_stock_record(t_kod, "TRANSFER", e_adr, t_unit, t_qty, is_increase=False)
             update_stock_record(t_kod, "TRANSFER", y_adr, t_unit, t_qty, is_increase=True)
-            st.success("Transfer Kaydedildi!")
+            st.success("Transfer yapıldı.")
 
 with t3:
-    st.subheader("🔍 Anlık Envanter")
-    search = st.text_input("Ara (Kod, İsim, Adres):", key="f_search").strip().upper()
+    st.subheader("🔍 Mevcut Stok")
+    ara = st.text_input("Ara:", key="f_search").strip().upper()
     
-    if st.button("LİSTEYİ YENİLE", use_container_width=True):
-        st.cache_data.clear()
-        stok_data = conn.read(spreadsheet=SHEET_URL, worksheet="Stok", ttl=0)
-        
-        if not stok_data.empty:
-            if search:
-                stok_data = stok_data[
-                    (stok_data['Kod'].str.contains(search, na=False)) | 
-                    (stok_data['İsim'].str.contains(search, na=False)) |
-                    (stok_data['Adres'].str.contains(search, na=False))
-                ]
-            st.dataframe(stok_data, use_container_width=True, hide_index=True)
-        else:
-            st.info("Stok sekmesi boş veya bulunamadı.")
+    col_a, col_b = st.columns(2)
+    with col_a:
+        if st.button("LİSTEYİ YENİLE", use_container_width=True):
+            st.cache_data.clear()
+            try:
+                stok_data = conn.read(spreadsheet=SHEET_URL, worksheet="Stok", ttl=0)
+                if not stok_data.empty:
+                    if ara:
+                        stok_data = stok_data[(stok_data['Kod'].str.contains(ara, na=False)) | (stok_data['Adres'].str.contains(ara, na=False))]
+                    st.dataframe(stok_data, use_container_width=True, hide_index=True)
+                else: st.warning("Stok sekmesi boş.")
+            except: st.error("Lütfen Google Sheets'te 'Stok' adında bir sekme açın.")
+
+    with col_b:
+        # --- KRİTİK SENKRONİZASYON BUTONU ---
+        if st.button("GEÇMİŞİ SENKRONİZE ET", help="Sayfa1'deki tüm geçmişi hesaplayıp Stok sekmesine yazar"):
+            with st.spinner("Hesaplanıyor..."):
+                st.cache_data.clear()
+                raw = conn.read(spreadsheet=SHEET_URL, worksheet="Sayfa1", ttl=0)
+                if not raw.empty:
+                    raw['Miktar'] = pd.to_numeric(raw['Miktar'], errors='coerce').fillna(0)
+                    raw['Net'] = raw.apply(lambda x: x['Miktar'] if x['İşlem'] == 'GİRİŞ' else (-x['Miktar'] if x['İşlem'] == 'ÇIKIŞ' else 0), axis=1)
+                    # "TRANSFER" yazan isimleri gerçek isimlerle doldur
+                    names = raw[raw['Malzeme Adı'] != 'TRANSFER'].sort_values('Tarih').groupby('Malzeme Kodu')['Malzeme Adı'].last().to_dict()
+                    raw['Malzeme Adı'] = raw['Malzeme Kodu'].map(names).fillna(raw['Malzeme Adı'])
+                    
+                    summary = raw.groupby(['Adres', 'Malzeme Kodu', 'Malzeme Adı', 'Birim'])['Net'].sum().reset_index()
+                    summary.columns = ['Adres', 'Kod', 'İsim', 'Birim', 'Miktar']
+                    summary = summary[summary['Miktar'] > 0]
+                    conn.update(spreadsheet=SHEET_URL, worksheet="Stok", data=summary)
+                    st.success("Senkronizasyon Tamamlandı! Şimdi 'Listeyi Yenile' yapabilirsiniz.")

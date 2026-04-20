@@ -50,7 +50,7 @@ def urun_katalogu_getir():
             df['Kod'] = df['Kod'].fillna("KODSUZ").astype(str)
             df['İsim'] = df['İsim'].fillna("İSİMSİZ").astype(str)
             df['Arama'] = df['Kod'] + " | " + df['İsim']
-            return ["+ MANUEL ARAMA"] + sorted(df['Arama'].unique().tolist())
+            return ["+ ÜRÜN KODU"] + sorted(df['Arama'].unique().tolist())
         return ["+ YENİ / MANUEL GİRİŞ"]
     except:
         return ["+ YENİ / MANUEL GİRİŞ"]

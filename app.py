@@ -8,19 +8,16 @@ import os
 st.set_page_config(page_title="Bilal Depo", layout="centered", page_icon="brn_logo.webp")
 
 # --- KOMPAKT LOGO VE BAŞLIK TASARIMI ---
-# Ekran alanını korumak için logo ve başlığı yan yana (1:4 oranında) diziyoruz
 col_logo, col_baslik = st.columns([1, 4])
 
 with col_logo:
     if os.path.exists("brn_logo.webp"):
-        # Logo ölçüsü %50 küçültüldü (width=50)
-        st.image("brn_logo.webp", width=50)
+        st.image("brn_logo.webp", width=50) # Logo %50 küçük
 
 with col_baslik:
-    # HTML kullanarak başlığı yukarı kaydırdık ve dikey hizaladık
-    st.markdown("<h3 style='margin: 0; padding-top: 5px;'>Bilal BRN Adresli Depo Simülasyonu</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='margin: 0; padding-top: 5px;'>Depo X-Ray v8.4</h3>", unsafe_allow_html=True)
 
-st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True) # Çok ince ve dar ara çizgi
+st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True)
 
 # --- BAĞLANTI VE FONKSİYONLAR ---
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -60,14 +57,14 @@ def kayit_ekle(islem, adres, kod, ad, birim, miktar):
     conn.update(data=pd.concat([df_temp, yeni_kayit], ignore_index=True), worksheet="Sayfa1")
 
 # --- SEKMELER ---
-t1, t2, t3 = st.tabs(["📥 Giriş/Çıkış", "🔄 Transfer", "🔍 Rapor"])
+t1, t2, t3 = st.tabs(["📥 Kayıt", "🔄 Transfer", "🔍 Rapor"])
 
 with t1:
     c_isl, c_adr = st.columns(2)
-    islem_tipi = c_isl.selectbox("Tip:", ["GİRİŞ", "ÇIKIŞ"])
+    islem_tipi = c_isl.selectbox("İşlem:", ["GİRİŞ", "ÇIKIŞ"])
     adr = c_adr.text_input("Adres:", value="GENEL")
     
-    kod = st.text_input("📦 Kod:")
+    kod = st.text_input("📦 Ürün Kodu:")
     ad_bulunan, birim_bulunan = urun_bilgisi_cek(kod)
     
     if kod:
@@ -80,13 +77,14 @@ with t1:
             if st.button(f"{islem_tipi} KAYDET", use_container_width=True):
                 if mik > 0:
                     kayit_ekle(islem_tipi, adr, kod, ad_bulunan, birim_bulunan, mik)
-                    st.success("Kaydedildi!")
+                    st.success("İşlem Başarılı!")
                     st.rerun()
         else:
-            st.error("Ürün Tanımsız!")
+            st.error("Ürün Tanımlı Değil!")
 
 with t2:
-    tr_kod = st.text_input("Transfer Kod:", key="tr_k")
+    st.subheader("Adres Transferi")
+    tr_kod = st.text_input("Ürün Kodu:", key="tr_k")
     tr_ad, tr_birim = urun_bilgisi_cek(tr_kod)
     
     if tr_kod and tr_ad:
@@ -95,9 +93,9 @@ with t2:
         n_den = ca.text_input("Nereden:", value="GENEL")
         n_ye = cb.text_input("Nereye:")
         tr_step = 0.001 if str(tr_birim).upper() not in ["ADET", "ADT"] else 1.0
-        tr_mik = st.number_input("Mik:", min_value=0.0, step=tr_step)
+        tr_mik = st.number_input("Mik:", min_value=0.0, step=tr_step, key="tr_mik")
         
-        if st.button("TRANSFERİ YAP", use_container_width=True):
+        if st.button("TRANSFERİ TAMAMLA", use_container_width=True):
             if n_ye and tr_mik > 0:
                 kayit_ekle("ÇIKIŞ", n_den, tr_kod, tr_ad, tr_birim, tr_mik)
                 kayit_ekle("GİRİŞ", n_ye, tr_kod, tr_ad, tr_birim, tr_mik)
@@ -106,8 +104,10 @@ with t2:
 
 with t3:
     col_t, col_b = st.columns([2, 1])
-    col_t.caption("📊 Anlık Stoklar")
-    if col_b.button("🔄 Yenile", size="small"): st.rerun()
+    col_t.caption("📊 Mevcut Stoklar")
+    # HATA DÜZELTİLDİ: size="small" kaldırıldı
+    if col_b.button("🔄 Yenile"): 
+        st.rerun()
     
     if not df_hareketler.empty:
         df_h = df_hareketler.copy()
@@ -119,7 +119,7 @@ with t3:
             stok.columns = ["Adr", "Kod", "Ad", "Brm", "Miktar"]
             st.dataframe(stok, use_container_width=True, hide_index=True)
         else:
-            st.warning("Sayfa1'e 'Birim' sütunu ekleyin!")
+            st.warning("Eksik Sütun: Birim!")
 
 # --- İMZA ---
-st.markdown("<div style='text-align: center; color: gray; font-size: 0.7em; margin-top: 20px;'>BRN Depo X-Ray v8.3 | Tasarlayan: [BİLAL KEMERTAŞ]</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align: center; color: gray; font-size: 0.7em; margin-top: 20px;'>Bilal BRN Depo  | Geliştiren: [BİLAL KEMERTAŞ]</div>", unsafe_allow_html=True)

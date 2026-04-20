@@ -3,9 +3,12 @@ import pandas as pd
 from datetime import datetime
 from streamlit_gsheets import GSheetsConnection
 
-# Sayfa Ayarları
-st.set_page_config(page_title="Akıllı Depo v7.1", layout="centered")
-st.title("📦 Profesyonel Adresli Depo Takip")
+# --- SAYFA AYARLARI VE ÖZEL İSİM ---
+st.set_page_config(page_title="Depo X-Ray v1.0", layout="centered", page_icon="🛡️")
+
+# Sistemin Yeni Adı
+st.title("🛡️ Depo X-Ray: Akıllı Takip Sistemi")
+st.markdown("---") 
 
 # Google Sheets Bağlantısı
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -52,12 +55,12 @@ with t1:
     g_kod = st.text_input("Ürün Kodu:", key="g_k")
     g_ad = st.text_input("Ürün Adı (Otomatik):", key="g_a")
     g_mik = st.number_input("Miktar:", min_value=0.0, step=1.0, key="g_m")
-    if st.button("📥 Kaydet", use_container_width=True):
+    if st.button("📥 Kaydı Tamamla", use_container_width=True):
         if g_kod and g_mik > 0:
             df_curr = taze_veri_getir()
             yeni = kayit_ekle("GİRİŞ", g_adr, g_kod, g_ad, g_mik, df_curr)
             conn.update(data=pd.concat([df_curr, yeni], ignore_index=True))
-            st.success("Kaydedildi!")
+            st.success("Sisteme İşlendi.")
             st.session_state.df = taze_veri_getir()
             st.rerun()
 
@@ -67,12 +70,12 @@ with t2:
     c_kod = st.text_input("Ürün Kodu:", key="c_k")
     c_ad = st.text_input("Ürün Adı (Otomatik):", key="c_a")
     c_mik = st.number_input("Miktar:", min_value=0.0, step=1.0, key="c_m")
-    if st.button("📤 Çıkış Yap", use_container_width=True):
+    if st.button("📤 Çıkışı Onayla", use_container_width=True):
         if c_kod and c_mik > 0:
             df_curr = taze_veri_getir()
             yeni = kayit_ekle("ÇIKIŞ", c_adr, c_kod, c_ad, c_mik, df_curr)
             conn.update(data=pd.concat([df_curr, yeni], ignore_index=True))
-            st.success("Çıkış Yapıldı!")
+            st.success("Çıkış Tamamlandı.")
             st.session_state.df = taze_veri_getir()
             st.rerun()
 
@@ -81,33 +84,31 @@ with t3:
     tr_kod = st.text_input("Ürün Kodu:", key="tr_k")
     col_a, col_b = st.columns(2)
     tr_nereden = col_a.text_input("Nereden:", value="GENEL")
-    tr_nereye = col_b.text_input("Nereye:", placeholder="Örn: P0001")
+    tr_nereye = col_b.text_input("Nereye:", placeholder="Hedef Adres")
     tr_mik = st.number_input("Miktar:", min_value=0.0, step=1.0, key="tr_m")
     
-    if st.button("🔄 Transferi Onayla", use_container_width=True):
+    if st.button("🔄 Transferi Başlat", use_container_width=True):
         if tr_kod and tr_nereye and tr_mik > 0:
             df_curr = taze_veri_getir()
             cikis_satir = kayit_ekle("ÇIKIŞ", tr_nereden, tr_kod, "", tr_mik, df_curr)
             giris_satir = kayit_ekle("GİRİŞ", tr_nereye, tr_kod, "", tr_mik, df_curr)
-            guncel_df = pd.concat([df_curr, cikis_satir, giris_satir], ignore_index=True)
-            conn.update(data=guncel_df)
-            st.success(f"Transfer Başarılı: {tr_nereden} -> {tr_nereye}")
+            conn.update(data=pd.concat([df_curr, cikis_satir, giris_satir], ignore_index=True))
+            st.success("Lokasyon Güncellendi.")
             st.session_state.df = taze_veri_getir()
             st.rerun()
 
 with t4:
     col1, col2 = st.columns([3, 1])
-    col1.subheader("🔍 Mevcut Stoklar")
+    col1.subheader("🔍 Mevcut Durum")
     if col2.button("🔄 Yenile"):
         st.session_state.df = taze_veri_getir()
         st.rerun()
     
-    search = st.text_input("Ara (Kod, Ad veya Adres):")
+    search = st.text_input("Sorgu Ekranı (Okutun veya Yazın):")
     df_ana = st.session_state.df
     if not df_ana.empty:
         df_ana['Miktar'] = pd.to_numeric(df_ana['Miktar'], errors='coerce').fillna(0)
         df_ana['Net'] = df_ana.apply(lambda r: r['Miktar'] if str(r['İşlem']).upper() == 'GİRİŞ' else -r['Miktar'], axis=1)
-        
         valid_names = df_ana[df_ana['Malzeme Adı'] != "-"].sort_values('Tarih')
         isim_map = valid_names.groupby('Malzeme Kodu')['Malzeme Adı'].last().to_dict()
         df_ana['Ürün Adı'] = df_ana['Malzeme Kodu'].map(isim_map).fillna(df_ana['Malzeme Adı'])
@@ -118,10 +119,20 @@ with t4:
         
         if search:
             t = search.upper()
-            # HATANIN DÜZELTİLDİĞİ YER: .str.contains eklendi
             mask = (stok['Adres'].str.upper().str.contains(t, na=False) | 
                     stok['Kod'].str.upper().str.contains(t, na=False) | 
                     stok['Ürün Adı'].str.upper().str.contains(t, na=False))
             stok = stok[mask]
-            
         st.dataframe(stok, use_container_width=True, hide_index=True)
+
+# --- İMZA BÖLÜMÜ ---
+st.markdown("---")
+st.markdown(
+    """
+    <div style="text-align: center; color: gray; font-size: 0.8em;">
+        Tasarlayan ve Geliştiren: <b>[Bilal KEMERTAŞ]</b> <br>
+        <i>🛡️ Depo X-Ray v1.0 | 2024</i>
+    </div>
+    """, 
+    unsafe_allow_html=True
+)

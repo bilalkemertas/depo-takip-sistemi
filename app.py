@@ -15,7 +15,7 @@ with col_logo:
         st.image("brn_logo.webp", width=50) # Logo %50 küçük
 
 with col_baslik:
-    st.markdown("<h3 style='margin: 0; padding-top: 5px;'>Depo X-Ray v8.4</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='margin: 0; padding-top: 5px;'>Bilal BRN Adresli Depo Simülasyonu</h3>", unsafe_allow_html=True)
 
 st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True)
 

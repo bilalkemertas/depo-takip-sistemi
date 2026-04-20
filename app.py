@@ -5,7 +5,7 @@ from streamlit_gsheets import GSheetsConnection
 import os
 
 # --- SAYFA AYARLARI ---
-st.set_page_config(page_title="Depo X-Ray v8.5", layout="centered", page_icon="brn_logo.webp")
+st.set_page_config(page_title="Bilal BRN Depo", layout="centered", page_icon="brn_logo.webp")
 
 # --- KOMPAKT LOGO VE BAŞLIK ---
 col_logo, col_baslik = st.columns([1, 4])
@@ -13,7 +13,7 @@ with col_logo:
     if os.path.exists("brn_logo.webp"):
         st.image("brn_logo.webp", width=50)
 with col_baslik:
-    st.markdown("<h3 style='margin: 0; padding-top: 5px;'>Depo X-Ray v8.5</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='margin: 0; padding-top: 5px;'>Bilal BRD Adresli Depo Simülasyonu</h3>", unsafe_allow_html=True)
 st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True)
 
 # --- BAĞLANTI ---
@@ -123,4 +123,4 @@ with t3:
         else: st.warning("Excel'de 'Birim' sütunu eksik!")
 
 # --- İMZA ---
-st.markdown("<div style='text-align: center; color: gray; font-size: 0.7em; margin-top: 20px;'>BRN Depo X-Ray v8.5 | Tasarlayan: [SENİN ADIN]</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align: center; color: gray; font-size: 0.7em; margin-top: 20px;'>BRN Depo X-Ray v8.5 | Tasarlayan: [BİLAL KEMERTAŞ]</div>", unsafe_allow_html=True)

@@ -1,151 +1,107 @@
 import streamlit as st
-import pandas as pd  # <-- Hata burada düzeltildi!
+import pandas as pd
 from datetime import datetime
 from streamlit_gsheets import GSheetsConnection
-import os
 import streamlit.components.v1 as components
 
-# --- 1. MODER TASARIM VE GİZLEME ---
-st.set_page_config(page_title="Bilal BRN Depo", layout="centered", page_icon="brn_logo.webp")
+# --- 1. SAYFA AYARLARI VE GİZLEME ---
+st.set_page_config(page_title="BRN X-Ray Pro", layout="centered", page_icon="📦")
 
+# Mobil görünümü daraltan ve Streamlit yazılarını gizleyen CSS
 st.markdown("""
     <style>
     #MainMenu, footer, header, .stDeployButton {display: none !important; visibility: hidden !important;}
     [data-testid="stStatusWidget"], [data-testid="stToolbar"], [data-testid="stDecoration"] {display: none !important;}
-    div[class*="viewerBadge"], div[class*="StreamlitFrameBadge"], button[title*="Manage"] {
-        display: none !important; height: 0px !important; width: 0px !important;
-    }
-    .block-container { padding: 0.5rem 1rem !important; max-width: 100% !important; }
-    input { font-size: 16px !important; }
+    .block-container { padding: 0.5rem 0.5rem !important; max-width: 100% !important; }
+    input { font-size: 16px !important; } /* Mobilde zoom yapmasını engeller */
+    .stTabs [data-baseweb="tab-list"] { gap: 2px; }
+    .stTabs [data-baseweb="tab"] { padding: 8px 12px; font-size: 14px; }
     </style>
 """, unsafe_allow_html=True)
 
-# Manage App Butonunu JavaScript ile imha et
+# Gelişmiş UI Temizleyici (JS)
 components.html(
-    """
-    <script>
-    const cleanSystemUI = () => {
-        const selectors = ['div[class*="viewerBadge"]', 'button[title*="Manage app"]', 'header', 'footer', '.stAppDeployButton'];
-        selectors.forEach(selector => {
-            try { window.parent.document.querySelectorAll(selector).forEach(el => el.remove()); } catch (e) {}
+    """<script>
+    const cleanUI = () => {
+        const selectors = ['div[class*="viewerBadge"]', 'button[title*="Manage app"]', 'header', 'footer'];
+        selectors.forEach(s => {
+            try { window.parent.document.querySelectorAll(s).forEach(el => el.remove()); } catch (e) {}
         });
     };
-    setInterval(cleanSystemUI, 300);
-    </script>
-    """,
-    height=0,
+    setInterval(cleanUI, 300);
+    </script>""", height=0
 )
 
-# --- 2. GÜVENLİK (MOBİL HATALARI SIFIRLAYAN FİLTRE) ---
-try:
-    USERS = st.secrets["users"]
-except Exception:
-    USERS = {"admin": "1234"}
-
+# --- 2. GÜVENLİK VE GİRİŞ ---
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
 if not st.session_state.logged_in:
     st.markdown("<h3 style='text-align:center;'>🛡️ BRN Güvenli Erişim</h3>", unsafe_allow_html=True)
     with st.form("Giriş"):
-        # .strip() ile mobildeki gizli boşlukları otomatik siliyoruz
         u_raw = st.text_input("Kullanıcı:")
         p_raw = st.text_input("Parola:", type="password")
-        
         if st.form_submit_button("SİSTEME GİRİŞ YAP", use_container_width=True):
-            # Temizlik operasyonu: Boşlukları sil ve küçük harfe çevir
-            u_in = u_raw.strip().lower()
-            p_in = p_raw.strip()
-            
-            # Şifreleri ve kullanıcıyı eşleştir
-            matching_user = next((u for u in USERS if u.lower() == u_in), None)
-            
-            if matching_user and str(USERS[matching_user]).strip() == p_in:
-                st.session_state.logged_in = True
-                st.session_state.user = matching_user
-                st.rerun()
-            else: 
-                st.error(f"Hatalı Giriş! (Yazılan: '{u_in}')") # Neyi hatalı gördüğünü anlamak için u_in'i yazdırıyoruz
+            try:
+                USERS = st.secrets["users"]
+                u_in = u_raw.strip().lower()
+                p_in = p_raw.strip()
+                match = next((u for u in USERS if u.lower() == u_in), None)
+                if match and str(USERS[match]) == p_in:
+                    st.session_state.logged_in = True
+                    st.session_state.user = match
+                    st.rerun()
+                else: st.error("Hatalı Giriş!")
+            except: st.error("Secrets (Şifreler) yapılandırılmamış!")
     st.stop()
+
 # --- 3. VERİ BAĞLANTISI ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-def get_data(ws):
-    st.cache_data.clear()
-    try:
-        df = conn.read(ttl=0, worksheet=ws)
-        if not df.empty:
-            df.columns = df.columns.str.strip()
-        return df
-    except: return pd.DataFrame()
+# --- 4. KOMPAKT HEADER (LOGO + İSİM + ÇIKIŞ) ---
+h_col1, h_col2, h_col3 = st.columns([0.8, 2, 0.8], vertical_alignment="center")
 
-df_u = get_data("Urun_Listesi")
-df_h_raw = get_data("Sayfa1")
+with h_col1:
+    # Logo dosyanın adının GitHub'da "brn_logo.webp" olduğundan emin olun
+    st.image("brn_logo.webp", width=55)
 
-# --- 4. ARAYÜZ ---
-c1, c2, c3 = st.columns([1, 3, 1])
-with c1:
-    if os.path.exists("brn_logo.webp"): st.image("brn_logo.webp", width=45)
-with c2: st.write(f"**Operatör:** {st.session_state.user.upper()}")
-with c3:
-    if st.button("Çık"):
+with h_col2:
+    st.markdown(f"<p style='margin:0; font-size:13px; font-weight:bold; color:gray;'>👤 {st.session_state.user.upper()}</p>", unsafe_allow_html=True)
+
+with h_col3:
+    if st.button("Çık", use_container_width=True):
         st.session_state.logged_in = False
         st.rerun()
 
-st.markdown("<hr style='margin:0'>", unsafe_allow_html=True)
+st.markdown("---")
 
+# --- 5. ANA MENÜ (TABS) ---
 t1, t2, t3 = st.tabs(["📥 İşlem", "🔄 Transfer", "📊 Stok"])
 
 with t1:
-    col_a, col_b = st.columns(2)
-    tip = col_a.selectbox("İşlem:", ["GİRİŞ", "ÇIKIŞ"])
-    adr = col_b.text_input("Adres:", "GENEL")
-    kod = st.text_input("📦 Barkod Okut:", key="main_scan")
-    
-    if kod:
-        match = df_u[df_u['Malzeme Kodu'].astype(str).str.upper() == str(kod).upper()]
-        if not match.empty:
-            ad, brm = match.iloc[0]['Malzeme Adı'], match.iloc[0]['Birim']
-            st.success(f"**{ad}** ({brm})")
-            step = 0.001 if str(brm).upper() not in ["ADET", "ADT"] else 1.0
-            mik = st.number_input("Miktar:", min_value=0.0, step=step)
-            if st.button("KAYDI TAMAMLA", use_container_width=True):
-                if mik > 0:
-                    yeni = pd.DataFrame({"Tarih": [datetime.now().strftime("%Y-%m-%d %H:%M:%S")], "İşlem": [tip], "Adres": [adr.upper()], "Malzeme Kodu": [kod.upper()], "Malzeme Adı": [ad.upper()], "Birim": [str(brm).upper()], "Miktar": [float(mik)], "Kullanıcı": [st.session_state.user.upper()]})
-                    conn.update(data=pd.concat([df_h_raw, yeni], ignore_index=True), worksheet="Sayfa1")
-                    st.toast("Kaydedildi!")
-                    st.rerun()
-        else: st.error("Ürün Tanımsız!")
+    with st.container(border=True):
+        islem = st.selectbox("İşlem Tipi:", ["GİRİŞ", "ÇIKIŞ"])
+        adres = st.text_input("Adres:", value="GENEL").strip().upper()
+        barkod = st.text_input("Barkod Okut:", key="bk1").strip().upper()
+        
+        if st.button("KAYDI TAMAMLA", use_container_width=True, type="primary"):
+            if barkod:
+                yeni_veri = pd.DataFrame([{
+                    "Tarih": datetime.now().strftime("%d.%m.%Y %H:%M"),
+                    "İşlem": islem,
+                    "Adres": adres,
+                    "Barkod": barkod,
+                    "Operatör": st.session_state.user
+                }])
+                mevcut = conn.read(worksheet="Sayfa1")
+                guncel = pd.concat([mevcut, yeni_veri], ignore_index=True)
+                conn.update(worksheet="Sayfa1", data=guncel)
+                st.success(f"✅ {islem} Tamamlandı!")
+            else: st.warning("Barkod okutun!")
 
 with t2:
-    tr_k = st.text_input("Transfer Barkodu:", key="tr_scan")
-    if tr_k and not df_u.empty:
-        m_tr = df_u[df_u['Malzeme Kodu'].astype(str).str.upper() == str(tr_k).upper()]
-        if not m_tr.empty:
-            st.info(f"Ürün: {m_tr.iloc[0]['Malzeme Adı']}")
-            ca, cb = st.columns(2)
-            n_d, n_y = ca.text_input("Nerden:"), cb.text_input("Nereye:")
-            tr_m = st.number_input("Miktar:", min_value=0.0, key="tr_qty")
-            if st.button("TRANSFERİ ONAYLA", use_container_width=True):
-                if n_y and tr_m > 0:
-                    y1 = pd.DataFrame({"Tarih": [datetime.now().strftime("%Y-%m-%d %H:%M:%S")], "İşlem": ["ÇIKIŞ"], "Adres": [n_d.upper()], "Malzeme Kodu": [tr_k.upper()], "Malzeme Adı": [m_tr.iloc[0]['Malzeme Adı'].upper()], "Birim": [str(m_tr.iloc[0]['Birim']).upper()], "Miktar": [float(tr_m)], "Kullanıcı": [st.session_state.user.upper()]})
-                    y2 = pd.DataFrame({"Tarih": [datetime.now().strftime("%Y-%m-%d %H:%M:%S")], "İşlem": ["GİRİŞ"], "Adres": [n_y.upper()], "Malzeme Kodu": [tr_k.upper()], "Malzeme Adı": [m_tr.iloc[0]['Malzeme Adı'].upper()], "Birim": [str(m_tr.iloc[0]['Birim']).upper()], "Miktar": [float(tr_m)], "Kullanıcı": [st.session_state.user.upper()]})
-                    conn.update(data=pd.concat([df_h_raw, y1, y2], ignore_index=True), worksheet="Sayfa1")
-                    st.toast("Transfer Tamam!"); st.rerun()
+    st.info("Transfer modülü yakında aktif olacak.")
 
 with t3:
-    if st.button("🔄 Veriyi Güncelle"): st.rerun()
-    ara = st.text_input("🔍 Filtre:").upper()
-    if not df_h_raw.empty:
-        df_h = df_h_raw.copy()
-        df_h['Birim'] = df_h['Birim'].fillna('-')
-        df_h['Miktar'] = pd.to_numeric(df_h['Miktar'], errors='coerce').fillna(0)
-        df_h['Net'] = df_h.apply(lambda r: r['Miktar'] if str(r['İşlem']).upper() == 'GİRİŞ' else -r['Miktar'], axis=1)
-        stok = df_h.groupby(['Adres', 'Malzeme Kodu', 'Malzeme Adı', 'Birim'])['Net'].sum().reset_index()
-        stok = stok[stok['Net'] > 0]
-        stok.columns = ["Adres", "Kod", "Ürün", "Brm", "Miktar"]
-        if ara:
-            stok = stok[(stok['Adres'].str.contains(ara, na=False)) | (stok['Kod'].str.contains(ara, na=False)) | (stok['Ürün'].str.contains(ara, na=False))]
-        st.dataframe(stok, use_container_width=True, hide_index=True)
-
-st.markdown("<p style='text-align:center; font-size:10px; color:gray;'>BRN SLEEP PRODUCTS | BİLAL KEMERTAŞ<", unsafe_allow_html=True)
+    if st.button("Güncel Stoğu Getir"):
+        st.dataframe(conn.read(worksheet="Sayfa1").tail(10), use_container_width=True)

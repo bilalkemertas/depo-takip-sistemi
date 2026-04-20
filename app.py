@@ -7,7 +7,7 @@ from streamlit_gsheets import GSheetsConnection
 st.set_page_config(page_title="Depo X-Ray v1.0", layout="centered", page_icon="🛡️")
 
 # Sistemin Yeni Adı
-st.title("🛡️ Depo X-Ray: Akıllı Takip Sistemi")
+st.title("🛡️ Bilal: Adres Takip Sistemi")
 st.markdown("---") 
 
 # Google Sheets Bağlantısı

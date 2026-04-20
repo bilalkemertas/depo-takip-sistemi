@@ -140,4 +140,4 @@ with t3:
             stok = stok[(stok['Adres'].str.contains(ara, na=False)) | (stok['Kod'].str.contains(ara, na=False)) | (stok['Ürün'].str.contains(ara, na=False))]
         st.dataframe(stok, use_container_width=True, hide_index=True)
 
-st.markdown("<p style='text-align:center; font-size:10px; color:gray;'>BRN SLEEP PRODUCTS | "BİLAL KEMERTAŞ", unsafe_allow_html=True)
+st.markdown("<p style='text-align:center; font-size:10px; color:gray;'>BRN SLEEP PRODUCTS | BİLAL KEMERTAŞ, unsafe_allow_html=True)

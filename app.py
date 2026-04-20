@@ -4,7 +4,7 @@ from datetime import datetime
 from streamlit_gsheets import GSheetsConnection
 
 # Sayfa Ayarları
-st.set_page_config(page_title="Akıllı Depo v7", layout="centered")
+st.set_page_config(page_title="Akıllı Depo v7.1", layout="centered")
 st.title("📦 Profesyonel Adresli Depo Takip")
 
 # Google Sheets Bağlantısı
@@ -77,37 +77,32 @@ with t2:
             st.rerun()
 
 with t3:
-    st.subheader("🔄 Adresler Arası Transfer")
-    tr_kod = st.text_input("Transfer Edilecek Ürün Kodu:", key="tr_k")
+    st.subheader("🔄 Adres Değişikliği (Transfer)")
+    tr_kod = st.text_input("Ürün Kodu:", key="tr_k")
     col_a, col_b = st.columns(2)
-    tr_nereden = col_a.text_input("Kaynak Adres (Nereden):", value="GENEL")
-    tr_nereye = col_b.text_input("Hedef Adres (Nereye):", placeholder="Örn: P0001")
-    tr_mik = st.number_input("Transfer Miktarı:", min_value=0.0, step=1.0, key="tr_m")
+    tr_nereden = col_a.text_input("Nereden:", value="GENEL")
+    tr_nereye = col_b.text_input("Nereye:", placeholder="Örn: P0001")
+    tr_mik = st.number_input("Miktar:", min_value=0.0, step=1.0, key="tr_m")
     
     if st.button("🔄 Transferi Onayla", use_container_width=True):
         if tr_kod and tr_nereye and tr_mik > 0:
             df_curr = taze_veri_getir()
-            # 1. Kaynak adresten ÇIKIŞ
             cikis_satir = kayit_ekle("ÇIKIŞ", tr_nereden, tr_kod, "", tr_mik, df_curr)
-            # 2. Hedef adrese GİRİŞ
             giris_satir = kayit_ekle("GİRİŞ", tr_nereye, tr_kod, "", tr_mik, df_curr)
-            
-            # İki satırı da ekle
             guncel_df = pd.concat([df_curr, cikis_satir, giris_satir], ignore_index=True)
             conn.update(data=guncel_df)
-            st.success(f"{tr_kod} ürünü {tr_nereden} -> {tr_nereye} adresine taşındı!")
+            st.success(f"Transfer Başarılı: {tr_nereden} -> {tr_nereye}")
             st.session_state.df = taze_veri_getir()
             st.rerun()
-        else: st.error("Lütfen tüm alanları doldurun!")
 
 with t4:
-    c1, c2 = st.columns([3, 1])
-    c1.subheader("🔍 Mevcut Stoklar")
-    if c2.button("🔄 Yenile"):
+    col1, col2 = st.columns([3, 1])
+    col1.subheader("🔍 Mevcut Stoklar")
+    if col2.button("🔄 Yenile"):
         st.session_state.df = taze_veri_getir()
         st.rerun()
     
-    search = st.text_input("Sorgula (Kod, Ad veya Adres):")
+    search = st.text_input("Ara (Kod, Ad veya Adres):")
     df_ana = st.session_state.df
     if not df_ana.empty:
         df_ana['Miktar'] = pd.to_numeric(df_ana['Miktar'], errors='coerce').fillna(0)
@@ -120,7 +115,13 @@ with t4:
         stok = df_ana.groupby(['Adres', 'Malzeme Kodu', 'Ürün Adı'])['Net'].sum().reset_index()
         stok = stok[stok['Net'] > 0]
         stok.columns = ["Adres", "Kod", "Ürün Adı", "Miktar"]
+        
         if search:
             t = search.upper()
-            stok = stok[(stok['Adres'].str.upper().contains(t)) | (stok['Kod'].str.upper().contains(t)) | (stok['Ürün Adı'].str.upper().contains(t))]
+            # HATANIN DÜZELTİLDİĞİ YER: .str.contains eklendi
+            mask = (stok['Adres'].str.upper().str.contains(t, na=False) | 
+                    stok['Kod'].str.upper().str.contains(t, na=False) | 
+                    stok['Ürün Adı'].str.upper().str.contains(t, na=False))
+            stok = stok[mask]
+            
         st.dataframe(stok, use_container_width=True, hide_index=True)

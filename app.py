@@ -123,4 +123,4 @@ with t3:
 
 # --- İMZA ---
 st.markdown("---")
-st.markdown(f'<div style="text-align: center; color: gray; font-size: 0.8em;"><b>[BİLAL KEMERTAŞ]</b><br>🛡️ Depo X-Ray v8.1</div>', unsafe_allow_html=True)
+st.markdown(f'<div style="text-align: center; color: gray; font-size: 0.8em;"><b>[BİLAL KEMERTAŞ]</b><br>, unsafe_allow_html=True)

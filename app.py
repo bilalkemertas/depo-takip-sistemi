@@ -5,14 +5,14 @@ from streamlit_gsheets import GSheetsConnection
 import os
 
 # --- SAYFA AYARLARI ---
-st.set_page_config(page_title="Bilal Depo", layout="centered", page_icon="")
+st.set_page_config(page_title="Bilal Depo", layout="centered", page_icon="🛡️")
 
 # --- LOGO VE BAŞLIK ---
 # Logonun varlığını kontrol et ve göster
 if os.path.exists("brn_logo.webp"):
     st.image("brn_logo.webp", width=150)
 
-st.title(" Bilal BRN Adresli Depo Simülasyonu")
+st.title("🛡️ Bilal BRN Depo Simülasyonu")
 st.markdown("---")
 
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -123,4 +123,4 @@ with t3:
 
 # --- İMZA ---
 st.markdown("---")
-st.markdown(f'<div style="text-align: center; color: gray; font-size: 0.8em;"><b>[BİLAL KEMERTAŞ]</b><br>, unsafe_allow_html=True)
+st.markdown(f'<div style="text-align: center; color: gray; font-size: 0.8em;">Geliştiren: <b>[BİLAL KEMERTAŞ]</b><br>🛡️ Depo X-Ray v8.1</div>', unsafe_allow_html=True)

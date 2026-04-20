@@ -80,10 +80,9 @@ def update_stock_record(kod, isim, adres, birim, miktar, is_increase=True):
     conn.update(spreadsheet=SHEET_URL, worksheet="Stok", data=stok_df)
 
 # --- 5. HEADER ---
-h1, h2, h3 = st.columns([0.8, 2, 0.8], vertical_alignment="center")
-with h1: st.image("brn_logo.webp", width=55)
-with h2: st.markdown(f"**👤 {st.session_state.user.upper()}**")
-with h3: 
+h1 = st.columns([0.8, 2, 0.8], vertical_alignment="center")
+with h1, h2: st.image("brn_logo.webp", width=55) , st.markdown(f"**👤 {st.session_state.user.upper()}**") , 
+with h2: 
     if st.button("Çık"):
         st.session_state.logged_in = False
         st.rerun()

@@ -4,7 +4,7 @@ from datetime import datetime
 from streamlit_gsheets import GSheetsConnection
 
 # --- 1. SAYFA AYARLARI ---
-st.set_page_config(page_title="BRN Depo Pro", layout="centered", page_icon="📦")
+st.set_page_config(page_title="Bilal BRN Depo", layout="centered", page_icon="📦")
 
 st.markdown("""
     <style>
@@ -21,7 +21,7 @@ if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
 if not st.session_state.logged_in:
-    st.markdown("<h3 style='text-align:center;'>🛡️ BRN Güvenli Erişim</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align:center;'>🛡️ BİLAL BRN DEPO GİRİŞ</h3>", unsafe_allow_html=True)
     with st.form("Giriş"):
         u_raw = st.text_input("Kullanıcı:")
         p_raw = st.text_input("Parola:", type="password")
@@ -120,7 +120,7 @@ with t3:
     with st_col1:
         st.subheader("🔍 Mevcut Stok")
     with st_col2:
-        sync_trigger = st.button("🔄 SENKRONİZE ET", use_container_width=True)
+        sync_trigger = st.button("🔄 GÜNCELLE", use_container_width=True)
 
     # Filtreleme (Full Width)
     ara = st.text_input("Kod, İsim veya Adres Ara:", key="f_search").strip().upper()
@@ -164,3 +164,12 @@ with t3:
                 st.warning("Stok sekmesi boş.")
         except:
             st.error("Stok sekmesine erişilemedi.")
+
+# --- İMZA SATIRI ---
+st.markdown("<br><br>", unsafe_allow_html=True)
+st.markdown(
+    "<div style='text-align: center; color: #888888; font-size: 12px; padding-top: 10px; border-top: 1px solid #e0e0e0;'>"
+    "<b>BRN SLEEP PRODUCTS</b><br>BİLAL KEMERTAŞ"
+    "</div>", 
+    unsafe_allow_html=True
+)

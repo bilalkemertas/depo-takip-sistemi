@@ -115,38 +115,30 @@ with t2:
             update_stock_record(t_kod, "TRANSFER", y_adr, t_unit, t_qty, is_increase=True)
             st.success("Transfer yapıldı.")
 
+# --- 📊 STOK SEKİMESİ (YENİ MOCKUP) ---
 with t3:
-    st.subheader("🔍 Mevcut Stok")
-    ara = st.text_input("Ara:", key="f_search").strip().upper()
-    
-    col_a, col_b = st.columns(2)
-    with col_a:
-        if st.button("LİSTEYİ YENİLE", use_container_width=True):
-            st.cache_data.clear()
-            try:
-                stok_data = conn.read(spreadsheet=SHEET_URL, worksheet="Stok", ttl=0)
-                if not stok_data.empty:
-                    if ara:
-                        stok_data = stok_data[(stok_data['Kod'].str.contains(ara, na=False)) | (stok_data['Adres'].str.contains(ara, na=False))]
-                    st.dataframe(stok_data, use_container_width=True, hide_index=True)
-                else: st.warning("Stok sekmesi boş.")
-            except: st.error("Lütfen Google Sheets'te 'Stok' adında bir sekme açın.")
+    # Başlık ve Senkronizasyon Butonu Yan Yana
+    st_col1, st_col2 = st.columns([1.5, 1], vertical_alignment="bottom")
+    with st_col1:
+        st.subheader("🔍 Mevcut Stok")
+    with st_col2:
+        sync_trigger = st.button("🔄 GEÇMİŞİ SENKRONİZE ET", use_container_width=True)
 
-    with col_b:
-        # --- KRİTİK SENKRONİZASYON BUTONU ---
-        if st.button("GEÇMİŞİ SENKRONİZE ET", help="Sayfa1'deki tüm geçmişi hesaplayıp Stok sekmesine yazar"):
-            with st.spinner("Hesaplanıyor..."):
-                st.cache_data.clear()
-                raw = conn.read(spreadsheet=SHEET_URL, worksheet="Sayfa1", ttl=0)
-                if not raw.empty:
-                    raw['Miktar'] = pd.to_numeric(raw['Miktar'], errors='coerce').fillna(0)
-                    raw['Net'] = raw.apply(lambda x: x['Miktar'] if x['İşlem'] == 'GİRİŞ' else (-x['Miktar'] if x['İşlem'] == 'ÇIKIŞ' else 0), axis=1)
-                    # "TRANSFER" yazan isimleri gerçek isimlerle doldur
-                    names = raw[raw['Malzeme Adı'] != 'TRANSFER'].sort_values('Tarih').groupby('Malzeme Kodu')['Malzeme Adı'].last().to_dict()
-                    raw['Malzeme Adı'] = raw['Malzeme Kodu'].map(names).fillna(raw['Malzeme Adı'])
-                    
-                    summary = raw.groupby(['Adres', 'Malzeme Kodu', 'Malzeme Adı', 'Birim'])['Net'].sum().reset_index()
-                    summary.columns = ['Adres', 'Kod', 'İsim', 'Birim', 'Miktar']
-                    summary = summary[summary['Miktar'] > 0]
-                    conn.update(spreadsheet=SHEET_URL, worksheet="Stok", data=summary)
-                    st.success("Senkronizasyon Tamamlandı! Şimdi 'Listeyi Yenile' yapabilirsiniz.")
+    # Filtreleme (Full Width)
+    ara = st.text_input("Kod, İsim veya Adres ile Filtrele:", key="f_search").strip().upper()
+    
+    # Listeleme Butonu (Full Width)
+    refresh_trigger = st.button("LİSTEYİ YENİLE / GÖRÜNTÜLE", use_container_width=True, type="primary")
+
+    # Tüm sütunları kaplayan liste alanı
+    st.divider()
+    
+    # MANTIK AYNI KALDI
+    if sync_trigger:
+        with st.spinner("Geçmiş veriler hesaplanıyor..."):
+            st.cache_data.clear()
+            raw = conn.read(spreadsheet=SHEET_URL, worksheet="Sayfa1", ttl=0)
+            if not raw.empty:
+                raw['Miktar'] = pd.to_numeric(raw['Miktar'], errors='coerce').fillna(0)
+                raw['Net'] = raw.apply(lambda x: x['Miktar'] if x['İşlem'] == 'GİRİŞ' else (-x['Miktar'] if x['İşlem'] == 'ÇIKIŞ' else 0), axis=1)
+                names

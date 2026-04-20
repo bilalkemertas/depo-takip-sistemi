@@ -6,7 +6,7 @@ import os
 import streamlit.components.v1 as components
 
 # --- 1. MODER TASARIM VE GİZLEME ---
-st.set_page_config(page_title="BRN X-Ray Pro", layout="centered", page_icon="brn_logo.webp")
+st.set_page_config(page_title="Bilal BRN Depo", layout="centered", page_icon="brn_logo.webp")
 
 st.markdown("""
     <style>
@@ -140,4 +140,4 @@ with t3:
             stok = stok[(stok['Adres'].str.contains(ara, na=False)) | (stok['Kod'].str.contains(ara, na=False)) | (stok['Ürün'].str.contains(ara, na=False))]
         st.dataframe(stok, use_container_width=True, hide_index=True)
 
-st.markdown("<p style='text-align:center; font-size:10px; color:gray;'>BRN v10.3 Pro | 2026</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align:center; font-size:10px; color:gray;'>BRN SLEEP PRODUCTS | BİLAL KEMERTAŞ", unsafe_allow_html=True)

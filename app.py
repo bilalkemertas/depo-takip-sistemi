@@ -6,7 +6,7 @@ import os
 import streamlit.components.v1 as components
 
 # --- 1. 2026 MODERN TASARIM VE AGRESİF GİZLEME ---
-st.set_page_config(page_title="BRN X-Ray Pro", layout="centered", page_icon="brn_logo.webp")
+st.set_page_config(page_title="Bilal BRN Depo", layout="centered", page_icon="brn_logo.webp")
 
 # Modern CSS: 2026 Streamlit framework sınıflarını hedefleyen stil paketi
 st.markdown("""
@@ -82,7 +82,7 @@ if "logged_in" not in st.session_state:
     st.session_state.user = ""
 
 def login_paneli():
-    st.markdown("<h3 style='text-align:center;'>🛡️ BRN Güvenli Erişim</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align:center;'>🛡️ BRN Adresli Depo Simülasyonu</h3>", unsafe_allow_html=True)
     with st.form("Giriş"):
         u = st.text_input("Kullanıcı:")
         p = st.text_input("Parola:", type="password")
@@ -203,4 +203,4 @@ with t3:
                             (stok['Ürün'].str.upper().str.contains(ara, na=False))]
             st.dataframe(stok, use_container_width=True, hide_index=True)
 
-st.markdown("<div style='text-align:center; color:gray; font-size:10px; margin-top:30px;'>BRN X-Ray Pro v10.0 | 2026 Modern Depo</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align:center; color:gray; font-size:10px; margin-top:30px;'>BRN SLEEP PRODUCTS | BİLAL KEMERTAŞ</div>", unsafe_allow_html=True)

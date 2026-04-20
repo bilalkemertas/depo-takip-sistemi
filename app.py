@@ -80,7 +80,7 @@ c1, c2, c3 = st.columns([1, 3, 1])
 with c1:
     if os.path.exists("brn_logo.webp"): st.image("brn_logo.webp", width=50)
 with c2:
-    st.markdown(f"**Hoş geldin, {st.session_state.user.upper()}**")
+    st.markdown(f"**KULLANICI, {st.session_state.user.upper()}**")
 with c3:
     if st.button("Çıkış"):
         st.session_state.logged_in = False
@@ -138,3 +138,5 @@ with t3:
             stok = stok[(stok['Adr'].str.upper().str.contains(s, na=False)) | (stok['Kod'].str.upper().str.contains(s, na=False)) | (stok['Ad'].str.upper().str.contains(s, na=False))]
         
         st.dataframe(stok, use_container_width=True, hide_index=True)
+        # --- İMZA ---
+st.markdown("<div style='text-align: center; color: gray; font-size: 0.7em; margin-top: 20px;'>BRN SLEEP PRODUCTS | Geliştiren: [BİLAL KEMERTAŞ]</div>", unsafe_allow_html=True)

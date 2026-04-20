@@ -36,7 +36,7 @@ components.html(
     height=0,
 )
 
-# --- 2. GÜVENLİK (HARF DUYARSIZ KULLANICI ADI) ---
+# --- 2. GÜVENLİK (MOBİL HATALARI SIFIRLAYAN FİLTRE) ---
 try:
     USERS = st.secrets["users"]
 except Exception:
@@ -46,19 +46,27 @@ if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
 if not st.session_state.logged_in:
-    st.markdown("<h3 style='text-align:center;'>🔒 Güvenli Erişim</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align:center;'>🛡️ BRN Güvenli Erişim</h3>", unsafe_allow_html=True)
     with st.form("Giriş"):
-        u_in = st.text_input("Kullanıcı:")
-        p_in = st.text_input("Parola:", type="password")
-        if st.form_submit_button("GİRİŞ", use_container_width=True):
-            matching_user = next((u for u in USERS if u.lower() == u_in.lower()), None)
-            if matching_user and str(USERS[matching_user]) == p_in:
+        # .strip() ile mobildeki gizli boşlukları otomatik siliyoruz
+        u_raw = st.text_input("Kullanıcı:")
+        p_raw = st.text_input("Parola:", type="password")
+        
+        if st.form_submit_button("SİSTEME GİRİŞ YAP", use_container_width=True):
+            # Temizlik operasyonu: Boşlukları sil ve küçük harfe çevir
+            u_in = u_raw.strip().lower()
+            p_in = p_raw.strip()
+            
+            # Şifreleri ve kullanıcıyı eşleştir
+            matching_user = next((u for u in USERS if u.lower() == u_in), None)
+            
+            if matching_user and str(USERS[matching_user]).strip() == p_in:
                 st.session_state.logged_in = True
                 st.session_state.user = matching_user
                 st.rerun()
-            else: st.error("Bilgiler hatalı!")
+            else: 
+                st.error(f"Hatalı Giriş! (Yazılan: '{u_in}')") # Neyi hatalı gördüğünü anlamak için u_in'i yazdırıyoruz
     st.stop()
-
 # --- 3. VERİ BAĞLANTISI ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 

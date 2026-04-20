@@ -4,21 +4,22 @@ from datetime import datetime
 from streamlit_gsheets import GSheetsConnection
 
 # Sayfa Ayarları
-st.set_page_config(page_title="Hızlı Depo", layout="centered")
-st.title("📦 Hızlı Depo Takip (V2)")
+st.set_page_config(page_title="Akıllı Depo v3", layout="centered")
+st.title("📦 Akıllı Depo Takip Sistemi")
 
 # Google Sheets Bağlantısı
 conn = st.connection("gsheets", type=GSheetsConnection)
 
+# Veriyi getiren fonksiyon
 def veri_getir():
     df = conn.read() 
     if not df.empty:
         df.columns = df.columns.str.strip()
     return df
 
+# Kayıt ekleme fonksiyonu
 def kayit_ekle(islem, adres, malzeme_kodu, malzeme_adi, miktar):
     df = veri_getir()
-    # Boş olan alanları "BİLİNMİYOR" yerine temiz birer tire (-) veya boşluk yapalım
     yeni_kayit = pd.DataFrame({
         "Tarih": [datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
         "İşlem": [islem],
@@ -30,49 +31,70 @@ def kayit_ekle(islem, adres, malzeme_kodu, malzeme_adi, miktar):
     guncel_df = pd.concat([df, yeni_kayit], ignore_index=True)
     conn.update(data=guncel_df)
 
+# Veritabanından ürün koduna göre isim bulan yardımcı fonksiyon (VLOOKUP Mantığı)
+def urun_adi_bul(kod, mevcut_df):
+    if kod and not mevcut_df.empty:
+        kod_arama = str(kod).upper().strip()
+        # En güncel ismi getirmek için listeyi tersten tarıyoruz
+        match = mevcut_df[mevcut_df['Malzeme Kodu'].str.upper() == kod_arama]
+        if not match.empty:
+            return match.iloc[-1]['Malzeme Adı']
+    return ""
+
+# Verileri bir kez çekelim
+df_ana = veri_getir()
+
 # Sekmeler
-tab1, tab2, tab3 = st.tabs(["📥 Hızlı Giriş", "📤 Hızlı Çıkış", "🔍 Stok Sorgula"])
+tab1, tab2, tab3 = st.tabs(["📥 Giriş", "📤 Çıkış", "🔍 Stok Sorgula"])
 
 with tab1:
     st.subheader("Malzeme Girişi")
     g_adr = st.text_input("Adres:", value="GENEL", key="g_adr")
-    g_kod = st.text_input("Ürün Kodu (Veya İsim):", key="g_k")
-    g_ad = st.text_input("Ürün Adı (Veya Kod):", key="g_a")
+    g_kod = st.text_input("Ürün Kodu:", key="g_k")
+    
+    # Otomatik Tamamlama Mantığı
+    otomatik_ad = urun_adi_bul(g_kod, df_ana)
+    g_ad = st.text_input("Ürün Adı:", value=otomatik_ad, help="Kod girildiğinde sistem otomatik getirir.", key="g_a")
+    
     g_mik = st.number_input("Miktar:", min_value=1, step=1, key="g_m")
     
-    # MANTIK: Kod VEYA Ad doluysa kaydet
-    if st.button("Girişi Tamamla", use_container_width=True):
+    if st.button("Girişi Kaydet", use_container_width=True):
         if g_kod or g_ad:
             kayit_ekle("GİRİŞ", g_adr, g_kod, g_ad, g_mik)
-            st.success("İşlem Başarıyla Kaydedildi!")
+            st.success(f"Başarılı! Ürün: {g_ad if g_ad else g_kod}")
+            st.rerun() # Sayfayı yenileyerek hafızayı günceller
         else:
-            st.error("HATA: Lütfen Ürün Kodu veya Ürün Adı alanlarından en az birini doldurun!")
+            st.error("HATA: En az bir ürün bilgisi girilmeli!")
 
 with tab2:
     st.subheader("Malzeme Çıkışı")
     c_adr = st.text_input("Adres:", value="GENEL", key="c_adr")
     c_kod = st.text_input("Ürün Kodu:", key="c_k")
-    c_ad = st.text_input("Ürün Adı:", key="c_a")
+    
+    # Otomatik Tamamlama Mantığı
+    otomatik_ad_c = urun_adi_bul(c_kod, df_ana)
+    c_ad = st.text_input("Ürün Adı:", value=otomatik_ad_c, key="c_a")
+    
     c_mik = st.number_input("Miktar:", min_value=1, step=1, key="c_m")
     
-    if st.button("Çıkışı Tamamla", use_container_width=True):
+    if st.button("Çıkışı Kaydet", use_container_width=True):
         if c_kod or c_ad:
             kayit_ekle("ÇIKIŞ", c_adr, c_kod, c_ad, c_mik)
             st.success("Çıkış İşlemi Tamamlandı!")
+            st.rerun()
         else:
-            st.error("HATA: Çıkış yapmak için ürün bilgisi girmelisiniz!")
+            st.error("HATA: Ürün bilgisi eksik!")
 
 with tab3:
     st.subheader("🔍 Stok Sorgula")
-    search = st.text_input("Herhangi bir şey yazın (Kod, Ad, Adres):")
+    search = st.text_input("Arama (Kod, Ad, Adres):")
     
     if search:
-        df = veri_getir()
-        if not df.empty:
-            df['Miktar'] = pd.to_numeric(df['Miktar'], errors='coerce').fillna(0)
-            df['Net'] = df.apply(lambda r: r['Miktar'] if str(r['İşlem']).upper() == 'GİRİŞ' else -r['Miktar'], axis=1)
+        if not df_ana.empty:
+            df_ana['Miktar'] = pd.to_numeric(df_ana['Miktar'], errors='coerce').fillna(0)
+            df_ana['Net'] = df_ana.apply(lambda r: r['Miktar'] if str(r['İşlem']).upper() == 'GİRİŞ' else -r['Miktar'], axis=1)
             
-            stok = df.groupby(['Adres', 'Malzeme Kodu', 'Malzeme Adı'])['Net'].sum().reset_index()
+            stok = df_ana.groupby(['Adres', 'Malzeme Kodu', 'Malzeme Adı'])['Net'].sum().reset_index()
             stok = stok[stok['Net'] > 0]
             
             term = search.upper()
@@ -82,6 +104,6 @@ with tab3:
             sonuc = stok[mask]
             
             if not sonuc.empty:
-                st.dataframe(sonuc[["Adres", "Malzeme Kodu", "Malzeme Adı", "Net"]], use_container_width=True, hide_index=True)
+                st.dataframe(sonuc, use_container_width=True, hide_index=True)
             else:
                 st.warning("Eşleşen ürün bulunamadı.")

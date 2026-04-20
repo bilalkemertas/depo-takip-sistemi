@@ -5,7 +5,6 @@ from streamlit_gsheets import GSheetsConnection
 import os
 
 # --- 1. GİZLEME VE TASARIM (CSS) ---
-# Bu blok terminaldeki tüm gereksiz Streamlit yazılarını ve butonlarını siler
 hide_style = """
     <style>
     #MainMenu {visibility: hidden;}
@@ -18,15 +17,17 @@ hide_style = """
     """
 
 # --- SAYFA AYARLARI ---
-st.set_page_config(page_title="Depo X-Ray v9.1", layout="centered", page_icon="brn_logo.webp")
-st.markdown(hide_style, unsafe_allow_html=True) # CSS'i uygula
+st.set_page_config(page_title="Depo X-Ray v9.2", layout="centered", page_icon="brn_logo.webp")
+st.markdown(hide_style, unsafe_allow_html=True)
 
-# --- KULLANICI DOĞRULAMA (Secrets üzerinden) ---
-# Not: Streamlit Cloud Dashboard > Settings > Secrets kısmına users tanımlanmış olmalı
+# --- KULLANICI DOĞRULAMA (Hatanın düzeltildiği yer) ---
 try:
     USERS = st.secrets["users"]
+except Exception:
+    # Secrets ayarlanmamışsa sistemin kilitlenmemesi için geçici bir kullanıcı tanımlıyoruz
+    USERS = {"admin": "1234"}
 
-
+# --- LOGIN KONTROLÜ ---
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.user = ""
@@ -133,7 +134,7 @@ with t2:
                 st.rerun()
 
 with t3:
-    search = st.text_input("🔍 Stok Arama:", placeholder="Kod, İsim veya Adres...")
+    search = st.text_input("🔍 Ara (Kod, Ad veya Adres):")
     if not df_hareketler.empty:
         df_h = df_hareketler.copy()
         df_h['Miktar'] = pd.to_numeric(df_h['Miktar'], errors='coerce').fillna(0)
@@ -147,4 +148,4 @@ with t3:
         st.dataframe(stok, use_container_width=True, hide_index=True)
 
 # --- İMZA ---
-st.markdown(f"<div style='text-align: center; color: gray; font-size: 0.7em; margin-top: 30px;'>🛡️ BRN SLEEP PRODUCTS| [BİLAL KEMERTAŞ]</div>", unsafe_allow_html=True)
+st.markdown(f"<div style='text-align: center; color: gray; font-size: 0.7em; margin-top: 30px;'>🛡️ BRN Depo X-Ray v9.2 | [SENİN ADIN]</div>", unsafe_allow_html=True)

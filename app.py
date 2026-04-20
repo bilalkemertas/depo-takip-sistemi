@@ -7,16 +7,39 @@ import os
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Bilal BRN Depo", layout="centered", page_icon="brn_logo.webp")
 
-# --- KOMPAKT LOGO VE BAŞLIK ---
-col_logo, col_baslik = st.columns([1, 4])
-with col_logo:
-    if os.path.exists("brn_logo.webp"):
-        st.image("brn_logo.webp", width=50)
-with col_baslik:
-    st.markdown("<h3 style='margin: 0; padding-top: 5px;'>Bilal BRN Adresli Depo Simülasyonu</h3>", unsafe_allow_html=True)
-st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True)
+# --- KULLANICI LİSTESİ (Burayı dilediğin gibi çoğaltabilirsin) ---
+USERS = {
+    "admin": "506413",
+    "depo1": "brn2026",
+    "depo2": "brn2026."
+    "depo3": "brn.2026"
+}
 
-# --- BAĞLANTI ---
+# --- LOGIN KONTROLÜ ---
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+    st.session_state.user = ""
+
+def login_ekrani():
+    st.markdown("<h2 style='text-align: center;'>🔒 Depo Giriş</h2>", unsafe_allow_html=True)
+    with st.form("Login"):
+        u_name = st.text_input("Kullanıcı Adı:")
+        u_pass = st.text_input("Parola:", type="password")
+        submit = st.form_submit_button("GİRİŞ YAP", use_container_width=True)
+        
+        if submit:
+            if u_name in USERS and USERS[u_name] == u_pass:
+                st.session_state.logged_in = True
+                st.session_state.user = u_name
+                st.rerun()
+            else:
+                st.error("Hatalı kullanıcı adı veya parola!")
+
+if not st.session_state.logged_in:
+    login_ekrani()
+    st.stop() # Giriş yapılmadıysa uygulamanın geri kalanını çalıştırma
+
+# --- BAĞLANTI VE FONKSİYONLAR ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def taze_veri_getir(worksheet="Sayfa1"):
@@ -34,10 +57,9 @@ df_hareketler = taze_veri_getir(worksheet="Sayfa1")
 
 def urun_bilgisi_cek(kod):
     if not df_urunler.empty and kod:
-        if 'Malzeme Kodu' in df_urunler.columns:
-            match = df_urunler[df_urunler['Malzeme Kodu'].astype(str).str.upper() == str(kod).upper()]
-            if not match.empty:
-                return match.iloc[0]['Malzeme Adı'], match.iloc[0]['Birim']
+        match = df_urunler[df_urunler['Malzeme Kodu'].astype(str).str.upper() == str(kod).upper()]
+        if not match.empty:
+            return match.iloc[0]['Malzeme Adı'], match.iloc[0]['Birim']
     return None, None
 
 def kayit_ekle(islem, adres, kod, ad, birim, miktar):
@@ -49,9 +71,22 @@ def kayit_ekle(islem, adres, kod, ad, birim, miktar):
         "Malzeme Kodu": [str(kod).upper()],
         "Malzeme Adı": [str(ad).upper()],
         "Birim": [str(birim).upper()],
-        "Miktar": [float(miktar)]
+        "Miktar": [float(miktar)],
+        "Kullanıcı": [st.session_state.user.upper()] # KİMİN YAPTIĞI BURADA TUTULUYOR
     })
     conn.update(data=pd.concat([df_temp, yeni_kayit], ignore_index=True), worksheet="Sayfa1")
+
+# --- ÜST PANEL (Logo & Çıkış) ---
+c1, c2, c3 = st.columns([1, 3, 1])
+with c1:
+    if os.path.exists("brn_logo.webp"): st.image("brn_logo.webp", width=50)
+with c2:
+    st.markdown(f"**Hoş geldin, {st.session_state.user.upper()}**")
+with c3:
+    if st.button("Çıkış"):
+        st.session_state.logged_in = False
+        st.rerun()
+st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True)
 
 # --- SEKMELER ---
 t1, t2, t3 = st.tabs(["📥 Kayıt", "🔄 Transfer", "🔍 Rapor"])
@@ -62,17 +97,15 @@ with t1:
     adr = c_adr.text_input("Adres:", value="GENEL")
     kod = st.text_input("📦 Ürün Kodu:")
     ad_bulunan, birim_bulunan = urun_bilgisi_cek(kod)
-    if kod:
-        if ad_bulunan:
-            st.success(f"{ad_bulunan} ({birim_bulunan})")
-            step_val = 0.001 if str(birim_bulunan).upper() not in ["ADET", "ADT", "AD"] else 1.0
-            mik = st.number_input(f"Miktar:", min_value=0.0, step=step_val)
-            if st.button(f"{islem_tipi} KAYDET", use_container_width=True):
-                if mik > 0:
-                    kayit_ekle(islem_tipi, adr, kod, ad_bulunan, birim_bulunan, mik)
-                    st.success("İşlem Başarılı!")
-                    st.rerun()
-        else: st.error("Ürün Tanımlı Değil!")
+    if kod and ad_bulunan:
+        st.success(f"{ad_bulunan} ({birim_bulunan})")
+        step_val = 0.001 if str(birim_bulunan).upper() not in ["ADET", "ADT"] else 1.0
+        mik = st.number_input(f"Miktar:", min_value=0.0, step=step_val)
+        if st.button(f"{islem_tipi} KAYDET", use_container_width=True):
+            if mik > 0:
+                kayit_ekle(islem_tipi, adr, kod, ad_bulunan, birim_bulunan, mik)
+                st.success("İşlem kaydedildi.")
+                st.rerun()
 
 with t2:
     tr_kod = st.text_input("Transfer Ürün Kodu:", key="tr_k")
@@ -82,45 +115,27 @@ with t2:
         ca, cb = st.columns(2)
         n_den = ca.text_input("Nereden:", value="GENEL")
         n_ye = cb.text_input("Nereye:")
-        tr_step = 0.001 if str(tr_birim).upper() not in ["ADET", "ADT"] else 1.0
-        tr_mik = st.number_input("Miktar:", min_value=0.0, step=tr_step, key="tr_mik")
+        tr_mik = st.number_input("Miktar:", min_value=0.0, key="tr_mik")
         if st.button("TRANSFERİ TAMAMLA", use_container_width=True):
             if n_ye and tr_mik > 0:
                 kayit_ekle("ÇIKIŞ", n_den, tr_kod, tr_ad, tr_birim, tr_mik)
                 kayit_ekle("GİRİŞ", n_ye, tr_kod, tr_ad, tr_birim, tr_mik)
-                st.success("Taşındı.")
+                st.success("Transfer tamamlandı.")
                 st.rerun()
 
 with t3:
-    col_t, col_b = st.columns([2, 1])
-    col_t.caption("📊 Mevcut Stoklar")
-    if col_b.button("🔄 Yenile"): st.rerun()
-    
-    # --- FİLTRELEME BURAYA GERİ GELDİ ---
-    search = st.text_input("🔍 Ara (Kod, Ad veya Adres):", placeholder="Yazın veya okutun...")
-    
+    search = st.text_input("🔍 Ara (Kod, Ad veya Adres):")
     if not df_hareketler.empty:
         df_h = df_hareketler.copy()
-        if 'Birim' in df_h.columns:
-            df_h['Miktar'] = pd.to_numeric(df_h['Miktar'], errors='coerce').fillna(0)
-            df_h['Net'] = df_h.apply(lambda r: r['Miktar'] if str(r['İşlem']).upper() == 'GİRİŞ' else -r['Miktar'], axis=1)
-            
-            # Gruplandırma
-            stok = df_h.groupby(['Adres', 'Malzeme Kodu', 'Malzeme Adı', 'Birim'])['Net'].sum().reset_index()
-            stok = stok[stok['Net'] > 0]
-            stok.columns = ["Adr", "Kod", "Ad", "Brm", "Miktar"]
-            
-            # Filtreleme Mantığı
-            if search:
-                s = search.upper()
-                stok = stok[
-                    (stok['Adr'].str.upper().str.contains(s, na=False)) |
-                    (stok['Kod'].str.upper().str.contains(s, na=False)) |
-                    (stok['Ad'].str.upper().str.contains(s, na=False))
-                ]
-            
-            st.dataframe(stok, use_container_width=True, hide_index=True)
-        else: st.warning("Excel'de 'Birim' sütunu eksik!")
-
-# --- İMZA ---
-st.markdown("<div style='text-align: center; color: gray; font-size: 0.7em; margin-top: 20px;'>BRN SLEEP PRODUCTS  | Tasarlayan: [BİLAL KEMERTAŞ]</div>", unsafe_allow_html=True)
+        df_h['Miktar'] = pd.to_numeric(df_h['Miktar'], errors='coerce').fillna(0)
+        df_h['Net'] = df_h.apply(lambda r: r['Miktar'] if str(r['İşlem']).upper() == 'GİRİŞ' else -r['Miktar'], axis=1)
+        
+        stok = df_h.groupby(['Adres', 'Malzeme Kodu', 'Malzeme Adı', 'Birim'])['Net'].sum().reset_index()
+        stok = stok[stok['Net'] > 0]
+        stok.columns = ["Adr", "Kod", "Ad", "Brm", "Miktar"]
+        
+        if search:
+            s = search.upper()
+            stok = stok[(stok['Adr'].str.upper().str.contains(s, na=False)) | (stok['Kod'].str.upper().str.contains(s, na=False)) | (stok['Ad'].str.upper().str.contains(s, na=False))]
+        
+        st.dataframe(stok, use_container_width=True, hide_index=True)

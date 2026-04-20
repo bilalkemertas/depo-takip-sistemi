@@ -12,7 +12,6 @@ USERS = {
     "admin": "506413",
     "depo1": "brn2026",
     "depo2": "brn2026."
-    "depo3": "brn.2026"
 }
 
 # --- LOGIN KONTROLÜ ---

@@ -79,15 +79,34 @@ def update_stock_record(kod, isim, adres, birim, miktar, is_increase=True):
     stok_df = stok_df[stok_df['Miktar'] > 0]
     conn.update(spreadsheet=SHEET_URL, worksheet="Stok", data=stok_df)
 
-# --- 5. HEADER ---
-h1 = st.columns([0.8, 2, 0.8], vertical_alignment="center")
-with h1, h2: st.image("brn_logo.webp", width=55) , st.markdown(f"**👤 {st.session_state.user.upper()}**") , 
+# --- HEADER MOBİL SABİTLEME CSS ---
+st.markdown("""
+    <style>
+    /* İlk sütun grubunun (Header) mobilde alt alta düşmesini kesin olarak engeller */
+    div[data-testid="stHorizontalBlock"]:first-of-type {
+        flex-wrap: nowrap !important;
+        align-items: center !important;
+    }
+    div[data-testid="stHorizontalBlock"]:first-of-type > div {
+        min-width: auto !important; /* Öğelerin ekranı dışarı taşırmasını engeller */
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# --- HEADER KODU ---
+h1, h2, h3 = st.columns([0.8, 2, 0.8], vertical_alignment="center")
+
+with h1: 
+    st.image("brn_logo.webp", width=55)
+    
 with h2: 
-    if st.button("Çık"):
+    # Yazının mobilde taşmaması ve tam ortalanması için marginleri sıfırladık
+    st.markdown(f"<p style='text-align: center; margin: 0; font-size: 14px;'><b>👤 {st.session_state.user.upper()}</b></p>", unsafe_allow_html=True)
+    
+with h3: 
+    if st.button("Çık", use_container_width=True):
         st.session_state.logged_in = False
         st.rerun()
-
-st.divider()
 
 # --- 6. MODÜLLER ---
 t1, t2, t3 = st.tabs(["📥 İşlem", "🔄 Transfer", "📊 Stok"])

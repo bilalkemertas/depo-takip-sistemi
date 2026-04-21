@@ -6,6 +6,7 @@ from streamlit_gsheets import GSheetsConnection
 # --- 1. SAYFA AYARLARI ---
 st.set_page_config(page_title="Bilal BRN Depo", layout="centered", page_icon="📦")
 
+# Mobil Header ve Kompakt Görünüm CSS
 st.markdown("""
     <style>
     #MainMenu, footer, header, .stDeployButton {display: none !important;}
@@ -13,6 +14,11 @@ st.markdown("""
     input { font-size: 16px !important; }
     .stTabs [data-baseweb="tab-list"] { gap: 5px; }
     .stTabs [data-baseweb="tab"] { padding: 10px; font-size: 14px; }
+    /* Header'ı mobilde tek satıra zorla */
+    div[data-testid="stHorizontalBlock"]:first-of-type {
+        flex-wrap: nowrap !important;
+        align-items: center !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -33,15 +39,15 @@ if not st.session_state.logged_in:
                     st.session_state.logged_in = True
                     st.session_state.user = u_lower
                     st.rerun()
-                else: st.error("Hatalı Giriş!")
-            except: st.error("Secrets bulunamadı!")
+                else: st.error("Hatalı Giriş Bilgisi!")
+            except: st.error("Secrets ayarları eksik!")
     st.stop()
 
 # --- 3. BAĞLANTI ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 SHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
 
-# --- 4. AKILLI KATALOG VE ENVANTER FONKSİYONLARI ---
+# --- 4. AKILLI KATALOG FONKSİYONLARI ---
 @st.cache_data(ttl=60)
 def urun_katalogu_getir():
     try:
@@ -50,10 +56,10 @@ def urun_katalogu_getir():
             df['Kod'] = df['Kod'].fillna("KODSUZ").astype(str)
             df['İsim'] = df['İsim'].fillna("İSİMSİZ").astype(str)
             df['Arama'] = df['Kod'] + " | " + df['İsim']
-            return ["KOD GİRİN VEYA ÜRÜN ADI GİRİN"] + sorted(df['Arama'].unique().tolist())
-        return ["KOD GİRİN"]
+            return ["+ YENİ / MANUEL GİRİŞ"] + sorted(df['Arama'].unique().tolist())
+        return ["+ YENİ / MANUEL GİRİŞ"]
     except:
-        return ["KOD GİRİN"]
+        return ["+ YENİ / MANUEL GİRİŞ"]
 
 def update_stock_record(kod, isim, adres, birim, miktar, is_increase=True):
     try:
@@ -76,139 +82,120 @@ def update_stock_record(kod, isim, adres, birim, miktar, is_increase=True):
         if is_increase:
             stok_df = pd.DataFrame([{"Adres": adres, "Kod": kod, "İsim": isim, "Birim": birim, "Miktar": miktar}])
     
-    stok_df = stok_df[stok_df['Miktar'] > 0]
+    stok_df = stok_df[stok_df['Miktar'] >= 0]
     conn.update(spreadsheet=SHEET_URL, worksheet="Stok", data=stok_df)
 
-# --- HEADER MOBİL SABİTLEME CSS ---
-st.markdown("""
-    <style>
-    /* İlk sütun grubunun (Header) mobilde alt alta düşmesini kesin olarak engeller */
-    div[data-testid="stHorizontalBlock"]:first-of-type {
-        flex-wrap: nowrap !important;
-        align-items: center !important;
-    }
-    div[data-testid="stHorizontalBlock"]:first-of-type > div {
-        min-width: auto !important; /* Öğelerin ekranı dışarı taşırmasını engeller */
-    }
-    </style>
-""", unsafe_allow_html=True)
-
-# --- HEADER KODU ---
+# --- 5. HEADER (TEK SATIR) ---
 h1, h2, h3 = st.columns([0.8, 2, 0.8], vertical_alignment="center")
-
-with h1: 
-    st.image("brn_logo.webp", width=55)
-    
-with h2: 
-    # Yazının mobilde taşmaması ve tam ortalanması için marginleri sıfırladık
-    st.markdown(f"<p style='text-align: center; margin: 0; font-size: 14px;'><b>👤 {st.session_state.user.upper()}</b></p>", unsafe_allow_html=True)
-    
+with h1: st.image("brn_logo.webp", width=55)
+with h2: st.markdown(f"<p style='text-align: center; margin: 0; font-size: 14px;'><b>👤 {st.session_state.user.upper()}</b></p>", unsafe_allow_html=True)
 with h3: 
     if st.button("Çık", use_container_width=True):
         st.session_state.logged_in = False
         st.rerun()
 
+st.divider()
+
 # --- 6. MODÜLLER ---
 t1, t2, t3 = st.tabs(["📥 İşlem", "🔄 Transfer", "📊 Stok"])
 arama_listesi = urun_katalogu_getir()
 
+# --- TAB 1: GİRİŞ / ÇIKIŞ ---
 with t1:
     with st.container(border=True):
         is_type = st.selectbox("İşlem:", ["GİRİŞ", "ÇIKIŞ"])
         adr = st.text_input("Adres:", value="GENEL", key="a1").strip().upper()
         
-        secim = st.selectbox("🔍 Kayıtlı Ürün Ara (Ad veya Kod):", arama_listesi, key="sec1")
+        # Arama ve Otomatik Doldurma
+        secim = st.selectbox("🔍 Kayıtlı Ürün Ara:", arama_listesi, key="sec1")
         
-        if secim == "+ YENİ / MANUEL GİRİŞ":
-            kod = st.text_input("Kod:", key="b1").strip().upper()
-            isim = st.text_input("İsim:", key="n1").strip().upper()
-        else:
+        kod_default = ""
+        isim_default = ""
+        
+        if secim != "+ YENİ / MANUEL GİRİŞ":
             bolunmus = str(secim).split(" | ")
-            oto_kod = bolunmus[0].strip() if len(bolunmus) > 0 else ""
-            oto_isim = bolunmus[1].strip() if len(bolunmus) > 1 else ""
-            
-            kod = st.text_input("Kod:", value=oto_kod, key="b1_auto").strip().upper()
-            isim = st.text_input("İsim:", value=oto_isim, key="n1_auto").strip().upper()
+            kod_default = bolunmus[0].strip() if len(bolunmus) > 0 else ""
+            isim_default = bolunmus[1].strip() if len(bolunmus) > 1 else ""
+        
+        # Değerler otomatik yansıyor
+        kod = st.text_input("Kod:", value=kod_default, key="b1", placeholder="KOD GİRİN...").strip().upper()
+        isim = st.text_input("İsim:", value=isim_default, key="n1", placeholder="ÜRÜN ADI GİRİN...").strip().upper()
             
         c1, c2 = st.columns(2)
         with c1: unit = st.selectbox("Birim:", ["ADET", "METRE", "KG", "RULO"], key="u1")
         with c2: qty = st.number_input("Miktar:", min_value=0.1, value=1.0, key="m1")
         
         if st.button("KAYDI TAMAMLA", use_container_width=True, type="primary"):
-            log_df = conn.read(spreadsheet=SHEET_URL, worksheet="Sayfa1")
-            new_log = pd.DataFrame([{"Tarih": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "İşlem": is_type, "Adres": adr, "Malzeme Kodu": kod, "Malzeme Adı": isim, "Birim": unit, "Miktar": qty, "Operatör": st.session_state.user}])
-            conn.update(spreadsheet=SHEET_URL, worksheet="Sayfa1", data=pd.concat([log_df, new_log]))
-            update_stock_record(kod, isim, adr, unit, qty, is_increase=(is_type == "GİRİŞ"))
-            st.success("Kaydedildi!")
+            if kod and isim:
+                log_df = conn.read(spreadsheet=SHEET_URL, worksheet="Sayfa1")
+                new_log = pd.DataFrame([{"Tarih": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "İşlem": is_type, "Adres": adr, "Malzeme Kodu": kod, "Malzeme Adı": isim, "Birim": unit, "Miktar": qty, "Operatör": st.session_state.user}])
+                conn.update(spreadsheet=SHEET_URL, worksheet="Sayfa1", data=pd.concat([log_df, new_log]))
+                update_stock_record(kod, isim, adr, unit, qty, is_increase=(is_type == "GİRİŞ"))
+                st.success("İşlem Kaydedildi!")
+                st.cache_data.clear()
+            else: st.error("Lütfen Kod ve İsim girin!")
 
+# --- TAB 2: TRANSFER ---
 with t2:
     with st.container(border=True):
         st.subheader("Transfer")
         e_adr = st.text_input("Nereden:", key="ea2").strip().upper()
         y_adr = st.text_input("Nereye:", key="ya2").strip().upper()
         
-        t_secim = st.selectbox("🔍 Transfer Edilecek Ürünü Ara:", arama_listesi, key="t_sec1")
+        t_secim = st.selectbox("🔍 Ürün Ara:", arama_listesi, key="t_sec1")
         
-        if t_secim == "+ YENİ / MANUEL GİRİŞ":
-            t_kod = st.text_input("Kod:", key="b2").strip().upper()
-            t_isim = "TRANSFER"
-        else:
-            bolunmus = str(t_secim).split(" | ")
-            oto_t_kod = bolunmus[0].strip() if len(bolunmus) > 0 else ""
-            t_isim = bolunmus[1].strip() if len(bolunmus) > 1 else "TRANSFER"
+        t_kod_def = ""
+        t_isim_def = "TRANSFER"
+        
+        if t_secim != "+ YENİ / MANUEL GİRİŞ":
+            t_bolunmus = str(t_secim).split(" | ")
+            t_kod_def = t_bolunmus[0].strip() if len(t_bolunmus) > 0 else ""
+            t_isim_def = t_bolunmus[1].strip() if len(t_bolunmus) > 1 else "TRANSFER"
             
-            t_kod = st.text_input("Kod:", value=oto_t_kod, key="b2_auto").strip().upper()
-            
+        t_kod = st.text_input("Kod:", value=t_kod_def, key="b2").strip().upper()
         t_qty = st.number_input("Miktar:", min_value=0.1, value=1.0, key="tm2")
         t_unit = st.selectbox("Birim:", ["ADET", "METRE", "KG", "RULO"], key="tu2")
         
         if st.button("TRANSFERİ ONAYLA", use_container_width=True, type="primary"):
-            log_df = conn.read(spreadsheet=SHEET_URL, worksheet="Sayfa1")
-            c_log = pd.DataFrame([{"Tarih": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "İşlem": "ÇIKIŞ", "Adres": e_adr, "Malzeme Kodu": t_kod, "Malzeme Adı": t_isim, "Birim": t_unit, "Miktar": t_qty, "Operatör": st.session_state.user}])
-            g_log = pd.DataFrame([{"Tarih": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "İşlem": "GİRİŞ", "Adres": y_adr, "Malzeme Kodu": t_kod, "Malzeme Adı": t_isim, "Birim": t_unit, "Miktar": t_qty, "Operatör": st.session_state.user}])
-            conn.update(spreadsheet=SHEET_URL, worksheet="Sayfa1", data=pd.concat([log_df, c_log, g_log]))
-            update_stock_record(t_kod, t_isim, e_adr, t_unit, t_qty, is_increase=False)
-            update_stock_record(t_kod, t_isim, y_adr, t_unit, t_qty, is_increase=True)
-            st.success("Transfer yapıldı.")
+            if t_kod and y_adr and e_adr:
+                log_df = conn.read(spreadsheet=SHEET_URL, worksheet="Sayfa1")
+                c_log = pd.DataFrame([{"Tarih": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "İşlem": "ÇIKIŞ", "Adres": e_adr, "Malzeme Kodu": t_kod, "Malzeme Adı": t_isim_def, "Birim": t_unit, "Miktar": t_qty, "Operatör": st.session_state.user}])
+                g_log = pd.DataFrame([{"Tarih": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "İşlem": "GİRİŞ", "Adres": y_adr, "Malzeme Kodu": t_kod, "Malzeme Adı": t_isim_def, "Birim": t_unit, "Miktar": t_qty, "Operatör": st.session_state.user}])
+                conn.update(spreadsheet=SHEET_URL, worksheet="Sayfa1", data=pd.concat([log_df, c_log, g_log]))
+                update_stock_record(t_kod, t_isim_def, e_adr, t_unit, t_qty, is_increase=False)
+                update_stock_record(t_kod, t_isim_def, y_adr, t_unit, t_qty, is_increase=True)
+                st.success("Transfer Kaydedildi!")
+                st.cache_data.clear()
 
+# --- TAB 3: STOK (GÜNCEL MOCKUP) ---
 with t3:
     st_col1, st_col2 = st.columns([1.4, 1], vertical_alignment="bottom")
     with st_col1:
         st.subheader("🔍 Mevcut Stok")
     with st_col2:
-        sync_trigger = st.button("🔄 SENKRONİZE ET", use_container_width=True)
+        if st.button("🔄 SENKRONİZE ET", use_container_width=True):
+            with st.spinner("Hesaplanıyor..."):
+                st.cache_data.clear()
+                raw = conn.read(spreadsheet=SHEET_URL, worksheet="Sayfa1", ttl=0)
+                if not raw.empty:
+                    raw['Miktar'] = pd.to_numeric(raw['Miktar'], errors='coerce').fillna(0)
+                    raw['Net'] = raw.apply(lambda x: x['Miktar'] if x['İşlem'] == 'GİRİŞ' else (-x['Miktar'] if x['İşlem'] == 'ÇIKIŞ' else 0), axis=1)
+                    lookup_names = raw[raw['Malzeme Adı'] != 'TRANSFER'].sort_values('Tarih').groupby('Malzeme Kodu')['Malzeme Adı'].last().to_dict()
+                    raw['Malzeme Adı'] = raw['Malzeme Kodu'].map(lookup_names).fillna(raw['Malzeme Adı'])
+                    summary = raw.groupby(['Adres', 'Malzeme Kodu', 'Malzeme Adı', 'Birim'])['Net'].sum().reset_index()
+                    summary.columns = ['Adres', 'Kod', 'İsim', 'Birim', 'Miktar']
+                    summary = summary[summary['Miktar'] > 0]
+                    conn.update(spreadsheet=SHEET_URL, worksheet="Stok", data=summary)
+                    st.success("Senkronize Edildi!")
 
-    ara = st.text_input("Kod, İsim veya Adres Ara:", key="f_search").strip().upper()
-    refresh_trigger = st.button("LİSTEYİ GÖRÜNTÜLE / YENİLE", use_container_width=True, type="primary")
-    st.divider()
-    
-    if sync_trigger:
-        with st.spinner("Geçmiş veriler hesaplanıyor..."):
-            st.cache_data.clear()
-            raw = conn.read(spreadsheet=SHEET_URL, worksheet="Sayfa1", ttl=0)
-            if not raw.empty:
-                raw['Miktar'] = pd.to_numeric(raw['Miktar'], errors='coerce').fillna(0)
-                raw['Net'] = raw.apply(lambda x: x['Miktar'] if x['İşlem'] == 'GİRİŞ' else (-x['Miktar'] if x['İşlem'] == 'ÇIKIŞ' else 0), axis=1)
-                lookup_names = raw[raw['Malzeme Adı'] != 'TRANSFER'].sort_values('Tarih').groupby('Malzeme Kodu')['Malzeme Adı'].last().to_dict()
-                raw['Malzeme Adı'] = raw['Malzeme Kodu'].map(lookup_names).fillna(raw['Malzeme Adı'])
-                summary = raw.groupby(['Adres', 'Malzeme Kodu', 'Malzeme Adı', 'Birim'])['Net'].sum().reset_index()
-                summary.columns = ['Adres', 'Kod', 'İsim', 'Birim', 'Miktar']
-                summary = summary[summary['Miktar'] > 0]
-                conn.update(spreadsheet=SHEET_URL, worksheet="Stok", data=summary)
-                st.success("Senkronizasyon Başarılı!")
-
-    if refresh_trigger or ara:
+    ara = st.text_input("Filtrele:", key="f_search").strip().upper()
+    if st.button("LİSTEYİ YENİLE", use_container_width=True, type="primary") or ara:
         st.cache_data.clear()
-        try:
-            stok_data = conn.read(spreadsheet=SHEET_URL, worksheet="Stok", ttl=0)
-            if not stok_data.empty:
-                if ara:
-                    stok_data = stok_data[(stok_data['Kod'].str.contains(ara, na=False)) | (stok_data['Adres'].str.contains(ara, na=False)) | (stok_data['İsim'].str.contains(ara, na=False))]
-                st.dataframe(stok_data, use_container_width=True, hide_index=True)
-            else:
-                st.warning("Stok sekmesi boş.")
-        except:
-            st.error("Stok sekmesine erişilemedi.")
+        stok_data = conn.read(spreadsheet=SHEET_URL, worksheet="Stok", ttl=0)
+        if not stok_data.empty:
+            if ara:
+                stok_data = stok_data[(stok_data['Kod'].str.contains(ara, na=False)) | (stok_data['Adres'].str.contains(ara, na=False)) | (stok_data['İsim'].str.contains(ara, na=False))]
+            st.dataframe(stok_data, use_container_width=True, hide_index=True)
 
 # --- 7. İMZA SATIRI ---
 st.markdown("<br><br>", unsafe_allow_html=True)

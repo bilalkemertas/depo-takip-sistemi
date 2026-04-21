@@ -53,7 +53,7 @@ def urun_katalogu_getir():
             return ["+ MANUEL ARAMA"] + sorted(df['Arama'].unique().tolist())
         return ["+ YENİ / MANUEL GİRİŞ"]
     except:
-        return ["+ YENİ / MANUEL GİRİŞ"]
+        return ["KOD GİRİN"]
 
 def update_stock_record(kod, isim, adres, birim, miktar, is_increase=True):
     try:

@@ -111,7 +111,7 @@ elif st.session_state.page == 'sayim':
                 r_cols[3].write(str(item['Miktar']))
                 r_cols[4].write(item['Durum'])
                 
-                # --- SİLME ONAY MEKANİZMASI ---
+                # GÜVENLİ SİLME
                 if st.session_state.delete_confirm == idx:
                     c_del, c_esc = r_cols[5].columns(2)
                     if c_del.button("✅", key=f"conf_{idx}"):
@@ -140,23 +140,27 @@ elif st.session_state.page == 'sayim':
                 df_stok_ana['Miktar'] = pd.to_numeric(df_stok_ana['Miktar'], errors='coerce').fillna(0)
                 
                 with st.expander("🔍 Filtreler", expanded=True):
-                    f_t = st.selectbox("📅 Tarih", ["Tümü"] + sorted(df_s_db["Tarih"].astype(str).unique().tolist(), reverse=True))
-                    c_f1, c_f2 = st.columns(2)
-                    sel_k = c_f1.multiselect("📦 Kod", sorted(df_s_db["Kod"].unique().tolist()))
-                    sel_a = c_f2.multiselect("📍 Adres", sorted(df_s_db["Adres"].unique().tolist()))
+                    # FİLTRELER: Her satırda 2 filtre olacak şekilde yerleştirildi
+                    col_f1, col_f2 = st.columns(2)
+                    col_f3, col_f4 = st.columns(2)
                     
-                    # YENİ EKLENEN DURUM FİLTRESİ
+                    # 1. Satır Filtreleri
+                    f_t = col_f1.selectbox("📅 Tarih", ["Tümü"] + sorted(df_s_db["Tarih"].astype(str).unique().tolist(), reverse=True))
+                    sel_k = col_f2.multiselect("📦 Kod", sorted(df_s_db["Kod"].unique().tolist()))
+                    
+                    # 2. Satır Filtreleri
+                    sel_a = col_f3.multiselect("📍 Adres", sorted(df_s_db["Adres"].unique().tolist()))
                     if "Durum" in df_s_db.columns:
                         durum_listesi = sorted(df_s_db["Durum"].astype(str).unique().tolist())
                     else:
                         durum_listesi = durum_opsiyonlari
-                    sel_d = st.multiselect("🛠️ Durum", durum_listesi)
+                    sel_d = col_f4.multiselect("🛠️ Durum", durum_listesi)
 
+                # FİLTRE UYGULAMA ADIMLARI
                 act = df_s_db.copy()
                 if f_t != "Tümü": act = act[act["Tarih"] == f_t]
                 if sel_k: act = act[act["Kod"].isin(sel_k)]
                 if sel_a: act = act[act["Adres"].isin(sel_a)]
-                # DURUM FİLTRESİNİN UYGULANMASI
                 if sel_d: act = act[act["Durum"].isin(sel_d)]
 
                 if not act.empty:

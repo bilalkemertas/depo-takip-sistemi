@@ -144,30 +144,37 @@ elif st.session_state.page == 'sayim':
                     c_f1, c_f2 = st.columns(2)
                     sel_k = c_f1.multiselect("📦 Kod", sorted(df_s_db["Kod"].unique().tolist()))
                     sel_a = c_f2.multiselect("📍 Adres", sorted(df_s_db["Adres"].unique().tolist()))
+                    
+                    # YENİ EKLENEN DURUM FİLTRESİ
+                    if "Durum" in df_s_db.columns:
+                        durum_listesi = sorted(df_s_db["Durum"].astype(str).unique().tolist())
+                    else:
+                        durum_listesi = durum_opsiyonlari
+                    sel_d = st.multiselect("🛠️ Durum", durum_listesi)
 
                 act = df_s_db.copy()
                 if f_t != "Tümü": act = act[act["Tarih"] == f_t]
                 if sel_k: act = act[act["Kod"].isin(sel_k)]
                 if sel_a: act = act[act["Adres"].isin(sel_a)]
+                # DURUM FİLTRESİNİN UYGULANMASI
+                if sel_d: act = act[act["Durum"].isin(sel_d)]
 
                 if not act.empty:
-                    # KRİTİK GÜNCELLEME: Gruplamaya 'Durum' eklendi, böylece miktarlar duruma göre kırılıyor.
                     say_ozet = act.groupby(['Adres', 'Kod', 'Ürün Adı', 'Durum'])['Miktar'].sum().reset_index()
                     say_ozet.columns = ["Adres", "Kod", "Ürün Adı", "Durum", "Sayılan"]
                     
                     sis_ozet = df_stok_ana.groupby(['Adres', 'Kod'])['Miktar'].sum().reset_index()
                     sis_ozet.columns = ["Adres", "Kod", "Sistem"]
                     
-                    # Sayım durumu bazlı karşılaştırma için sistem stoğunu her duruma paylaştırıyoruz (genellikle sağlam stoğa bakılır)
                     res = pd.merge(say_ozet, sis_ozet, on=['Adres', 'Kod'], how='left').fillna(0)
                     res['FARK'] = res['Sayılan'] - res['Sistem']
                     
                     m1, m2 = st.columns(2)
-                    m1.metric("Sayılan", f"{res['Sayılan'].sum():,.0f}")
+                    m1.metric("Sayılan (Filtreli)", f"{res['Sayılan'].sum():,.0f}")
                     m2.metric("Fark", f"{res['FARK'].sum():,.0f}", delta=int(res['FARK'].sum()))
                     
-                    # HATA DÜZELTME: applymap yerine map kullanıldı
                     st.dataframe(res.style.map(lambda v: 'color:red; font-weight:bold' if v < 0 else 'color:green; font-weight:bold' if v > 0 else '', subset=['FARK']), use_container_width=True, hide_index=True)
+                else: st.warning("Seçilen filtrelere uygun sayım verisi bulunamadı.")
             else: st.info("Sayım verisi bulunamadı.")
         except Exception as e: st.error(f"Hata: {e}")
 

@@ -25,6 +25,7 @@ st.markdown("""
 if "logged_in" not in st.session_state: st.session_state.logged_in = False
 if 'gecici_sayim_listesi' not in st.session_state: st.session_state['gecici_sayim_listesi'] = []
 if 'page' not in st.session_state: st.session_state.page = 'home'
+if 'delete_confirm' not in st.session_state: st.session_state.delete_confirm = None
 
 if not st.session_state.logged_in:
     st.markdown("<h3 style='text-align:center;'>🛡️ Bilal BRN Depo Giriş</h3>", unsafe_allow_html=True)
@@ -68,7 +69,7 @@ if st.session_state.page == 'home':
         if st.button("📈 GENEL RAPORLAR", use_container_width=True, type="primary"): st.session_state.page = 'rapor'; st.rerun()
     if st.sidebar.button("Güvenli Çıkış"): st.session_state.clear(); st.rerun()
 
-# --- 5. SAYIM SİSTEMİ (EN GÜNCEL TABLO DÜZENİ) ---
+# --- 5. SAYIM SİSTEMİ ---
 elif st.session_state.page == 'sayim':
     if st.button("⬅️ ANA MENÜ"): st.session_state.page = 'home'; st.rerun()
     st.title("⚖️ Sayım ve Durum Yönetimi")
@@ -97,21 +98,33 @@ elif st.session_state.page == 'sayim':
 
         if st.session_state['gecici_sayim_listesi']:
             st.markdown("### 📥 Onay Bekleyenler")
-            # Tablo Başlıkları
-            h_cols = st.columns([1, 1.2, 1.5, 0.7, 1, 0.4])
+            h_cols = st.columns([1, 1.2, 1.5, 0.7, 1, 0.6])
             h_cols[0].write("**Adres**"); h_cols[1].write("**Kod**"); h_cols[2].write("**Ürün**")
             h_cols[3].write("**Mik.**"); h_cols[4].write("**Durum**"); h_cols[5].write("**Sil**")
             st.markdown("---")
 
             for idx, item in enumerate(st.session_state['gecici_sayim_listesi']):
-                r_cols = st.columns([1, 1.2, 1.5, 0.7, 1, 0.4])
+                r_cols = st.columns([1, 1.2, 1.5, 0.7, 1, 0.6])
                 r_cols[0].write(item['Adres'])
                 r_cols[1].write(item['Kod'])
                 r_cols[2].markdown(f"<p class='row-font'>{item['Ürün Adı'][:15]}</p>", unsafe_allow_html=True)
                 r_cols[3].write(str(item['Miktar']))
                 r_cols[4].write(item['Durum'])
-                if r_cols[5].button("🗑️", key=f"del_{idx}"):
-                    st.session_state['gecici_sayim_listesi'].pop(idx); st.rerun()
+                
+                # --- GÜVENLİ SİLME MANTIĞI ---
+                if st.session_state.delete_confirm == idx:
+                    c_del, c_esc = r_cols[5].columns(2)
+                    if c_del.button("✅", key=f"conf_{idx}"):
+                        st.session_state['gecici_sayim_listesi'].pop(idx)
+                        st.session_state.delete_confirm = None
+                        st.rerun()
+                    if c_esc.button("❌", key=f"esc_{idx}"):
+                        st.session_state.delete_confirm = None
+                        st.rerun()
+                else:
+                    if r_cols[5].button("🗑️", key=f"del_{idx}"):
+                        st.session_state.delete_confirm = idx
+                        st.rerun()
             
             if st.button("📤 DRIVE'A KAYDET", type="primary", use_container_width=True):
                 df_db = get_internal_data("sayim")
@@ -151,16 +164,14 @@ elif st.session_state.page == 'sayim':
             else: st.info("Sayım verisi bulunamadı.")
         except Exception as e: st.error(f"Hata: {e}")
 
-# Diğer Ekranlar (Stok, Üretim, Rapor)
+# Diğer Ekranlar
 elif st.session_state.page == 'stok':
     if st.button("⬅️ ANA MENÜ"): st.session_state.page = 'home'; st.rerun()
     st.subheader("📦 Stok Giriş/Çıkış")
-    st.info("Bu modül v21 standartlarında aktiftir.")
 
 elif st.session_state.page == 'uretim':
     if st.button("⬅️ ANA MENÜ"): st.session_state.page = 'home'; st.rerun()
     st.subheader("🏭 Üretim Hazırlık")
-    st.info("Üretim iş emirleri modülü aktiftir.")
 
 elif st.session_state.page == 'rapor':
     if st.button("⬅️ ANA MENÜ"): st.session_state.page = 'home'; st.rerun()

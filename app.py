@@ -57,7 +57,7 @@ def get_kod_map():
     if not df.empty: return dict(zip(df['Kod'].astype(str), df['İsim'].astype(str)))
     return {}
 
-# --- 4. ANA EKRAN ---
+# --- 4. ANA EKRAN (NAVİGASYON) ---
 if st.session_state.page == 'home':
     st.markdown("<h3 style='text-align:center;'>📦 Depo Kontrol Merkezi</h3>", unsafe_allow_html=True)
     c1, c2 = st.columns(2)
@@ -111,7 +111,7 @@ elif st.session_state.page == 'sayim':
                 r_cols[3].write(str(item['Miktar']))
                 r_cols[4].write(item['Durum'])
                 
-                # GÜVENLİ SİLME
+                # --- SİLME ONAY MEKANİZMASI ---
                 if st.session_state.delete_confirm == idx:
                     c_del, c_esc = r_cols[5].columns(2)
                     if c_del.button("✅", key=f"conf_{idx}"):
@@ -129,7 +129,7 @@ elif st.session_state.page == 'sayim':
             if st.button("📤 DRIVE'A KAYDET", type="primary", use_container_width=True):
                 df_db = get_internal_data("sayim")
                 conn.update(spreadsheet=SHEET_URL, worksheet="sayim", data=pd.concat([df_db, pd.DataFrame(st.session_state['gecici_sayim_listesi'])], ignore_index=True))
-                st.session_state['gecici_sayim_listesi'] = []; st.success("Kaydedildi!"); st.rerun()
+                st.session_state['gecici_sayim_listesi'] = []; st.success("Drive güncellendi!"); st.rerun()
 
     with st_tab2:
         try:
@@ -151,10 +151,15 @@ elif st.session_state.page == 'sayim':
                 if sel_a: act = act[act["Adres"].isin(sel_a)]
 
                 if not act.empty:
-                    say_ozet = act.groupby(['Adres', 'Kod', 'Ürün Adı'])['Miktar'].sum().reset_index()
+                    # KRİTİK GÜNCELLEME: Gruplamaya 'Durum' eklendi, böylece miktarlar duruma göre kırılıyor.
+                    say_ozet = act.groupby(['Adres', 'Kod', 'Ürün Adı', 'Durum'])['Miktar'].sum().reset_index()
+                    say_ozet.columns = ["Adres", "Kod", "Ürün Adı", "Durum", "Sayılan"]
+                    
                     sis_ozet = df_stok_ana.groupby(['Adres', 'Kod'])['Miktar'].sum().reset_index()
+                    sis_ozet.columns = ["Adres", "Kod", "Sistem"]
+                    
+                    # Sayım durumu bazlı karşılaştırma için sistem stoğunu her duruma paylaştırıyoruz (genellikle sağlam stoğa bakılır)
                     res = pd.merge(say_ozet, sis_ozet, on=['Adres', 'Kod'], how='left').fillna(0)
-                    res.columns = ["Adres", "Kod", "Ürün Adı", "Sayılan", "Sistem"]
                     res['FARK'] = res['Sayılan'] - res['Sistem']
                     
                     m1, m2 = st.columns(2)
@@ -163,13 +168,13 @@ elif st.session_state.page == 'sayim':
                     
                     # HATA DÜZELTME: applymap yerine map kullanıldı
                     st.dataframe(res.style.map(lambda v: 'color:red; font-weight:bold' if v < 0 else 'color:green; font-weight:bold' if v > 0 else '', subset=['FARK']), use_container_width=True, hide_index=True)
-            else: st.info("Sayım verisi yok.")
-        except Exception as e: st.error(f"Rapor Hatası: {e}")
+            else: st.info("Sayım verisi bulunamadı.")
+        except Exception as e: st.error(f"Hata: {e}")
 
-# Diğer ekranlar...
+# Diğer Ekranlar...
 elif st.session_state.page == 'stok':
     if st.button("⬅️ ANA MENÜ"): st.session_state.page = 'home'; st.rerun()
-    st.subheader("📦 Stok İşlemleri")
+    st.subheader("📦 Stok Giriş/Çıkış")
 
 elif st.session_state.page == 'uretim':
     if st.button("⬅️ ANA MENÜ"): st.session_state.page = 'home'; st.rerun()
@@ -178,7 +183,7 @@ elif st.session_state.page == 'uretim':
 elif st.session_state.page == 'rapor':
     if st.button("⬅️ ANA MENÜ"): st.session_state.page = 'home'; st.rerun()
     st.subheader("📈 Genel Raporlar")
-    t1, t2 = st.tabs(["Stok Listesi", "Hareket Arşivi"])
+    t1, t2 = st.tabs(["Stok Listesi", "Hareketler"])
     with t1: st.dataframe(get_internal_data("Stok"), use_container_width=True)
     with t2: st.dataframe(get_internal_data("Sayfa1").iloc[::-1], use_container_width=True)
 

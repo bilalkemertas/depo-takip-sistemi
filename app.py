@@ -57,7 +57,7 @@ def get_kod_map():
     if not df.empty: return dict(zip(df['Kod'].astype(str), df['İsim'].astype(str)))
     return {}
 
-# --- 4. ANA EKRAN (NAVİGASYON) ---
+# --- 4. ANA EKRAN ---
 if st.session_state.page == 'home':
     st.markdown("<h3 style='text-align:center;'>📦 Depo Kontrol Merkezi</h3>", unsafe_allow_html=True)
     c1, c2 = st.columns(2)
@@ -111,7 +111,7 @@ elif st.session_state.page == 'sayim':
                 r_cols[3].write(str(item['Miktar']))
                 r_cols[4].write(item['Durum'])
                 
-                # --- GÜVENLİ SİLME MANTIĞI ---
+                # GÜVENLİ SİLME
                 if st.session_state.delete_confirm == idx:
                     c_del, c_esc = r_cols[5].columns(2)
                     if c_del.button("✅", key=f"conf_{idx}"):
@@ -129,7 +129,7 @@ elif st.session_state.page == 'sayim':
             if st.button("📤 DRIVE'A KAYDET", type="primary", use_container_width=True):
                 df_db = get_internal_data("sayim")
                 conn.update(spreadsheet=SHEET_URL, worksheet="sayim", data=pd.concat([df_db, pd.DataFrame(st.session_state['gecici_sayim_listesi'])], ignore_index=True))
-                st.session_state['gecici_sayim_listesi'] = []; st.success("Drive güncellendi!"); st.rerun()
+                st.session_state['gecici_sayim_listesi'] = []; st.success("Kaydedildi!"); st.rerun()
 
     with st_tab2:
         try:
@@ -160,14 +160,16 @@ elif st.session_state.page == 'sayim':
                     m1, m2 = st.columns(2)
                     m1.metric("Sayılan", f"{res['Sayılan'].sum():,.0f}")
                     m2.metric("Fark", f"{res['FARK'].sum():,.0f}", delta=int(res['FARK'].sum()))
-                    st.dataframe(res.style.applymap(lambda v: 'color:red' if v < 0 else 'color:green' if v > 0 else '', subset=['FARK']), use_container_width=True, hide_index=True)
-            else: st.info("Sayım verisi bulunamadı.")
-        except Exception as e: st.error(f"Hata: {e}")
+                    
+                    # HATA DÜZELTME: applymap yerine map kullanıldı
+                    st.dataframe(res.style.map(lambda v: 'color:red; font-weight:bold' if v < 0 else 'color:green; font-weight:bold' if v > 0 else '', subset=['FARK']), use_container_width=True, hide_index=True)
+            else: st.info("Sayım verisi yok.")
+        except Exception as e: st.error(f"Rapor Hatası: {e}")
 
-# Diğer Ekranlar
+# Diğer ekranlar...
 elif st.session_state.page == 'stok':
     if st.button("⬅️ ANA MENÜ"): st.session_state.page = 'home'; st.rerun()
-    st.subheader("📦 Stok Giriş/Çıkış")
+    st.subheader("📦 Stok İşlemleri")
 
 elif st.session_state.page == 'uretim':
     if st.button("⬅️ ANA MENÜ"): st.session_state.page = 'home'; st.rerun()
@@ -176,7 +178,7 @@ elif st.session_state.page == 'uretim':
 elif st.session_state.page == 'rapor':
     if st.button("⬅️ ANA MENÜ"): st.session_state.page = 'home'; st.rerun()
     st.subheader("📈 Genel Raporlar")
-    t1, t2 = st.tabs(["Stok Listesi", "Hareketler"])
+    t1, t2 = st.tabs(["Stok Listesi", "Hareket Arşivi"])
     with t1: st.dataframe(get_internal_data("Stok"), use_container_width=True)
     with t2: st.dataframe(get_internal_data("Sayfa1").iloc[::-1], use_container_width=True)
 

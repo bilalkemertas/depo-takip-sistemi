@@ -183,6 +183,38 @@ elif st.session_state.page == 'sayim':
                 st.info("Rapor Filtreleri v22 standartlarında aktif.")
                 # (Rapor tablosu ve metrikler...)
         except: st.info("Sayım verisi yok.")
+            # --- 9. RAPORLAR (GELİŞTİRİLMİŞ VERİ KONTROLÜ) ---
+elif st.session_state.page == 'rapor':
+    if st.button("⬅️ ANA MENÜ"): go_home(); st.rerun()
+    
+    st.subheader("📊 Merkezi Raporlar")
+    rt1, rt2, rt3 = st.tabs(["🏠 Stok Durumu", "🏭 Hazırlık Takibi", "📜 Hareket Arşivi"])
+    
+    with rt1:
+        stok_data = get_internal_data("Stok")
+        if not stok_data.empty:
+            st.dataframe(stok_data, use_container_width=True, hide_index=True)
+        else:
+            st.warning("⚠️ 'Stok' sayfasında veri bulunamadı. Lütfen Google Sheets dosyanızı kontrol edin.")
+
+    with rt2:
+        hazirlik_data = get_internal_data("Is_Emirleri")
+        if not hazirlik_data.empty:
+            # Mevcut hazırlık raporu kodların...
+            df_h = hazirlik_data.copy()
+            df_h['İhtiyaç Miktarı'] = pd.to_numeric(df_h['İhtiyaç Miktarı'], errors='coerce').fillna(0)
+            df_h['Hazırlanan Adet'] = pd.to_numeric(df_h['Hazırlanan Adet'], errors='coerce').fillna(0)
+            summary = df_h.groupby('İş Emri')[['İhtiyaç Miktarı', 'Hazırlanan Adet']].sum().reset_index()
+            st.dataframe(summary, use_container_width=True, hide_index=True)
+        else:
+            st.info("ℹ️ Henüz yüklenmiş bir iş emri bulunmuyor.")
+
+    with rt3:
+        movements = get_internal_data("Sayfa1")
+        if not movements.empty:
+            st.dataframe(movements.iloc[::-1], use_container_width=True, hide_index=True)
+        else:
+            st.info("ℹ️ Henüz bir stok hareketi kaydedilmemiş.")
 
 # (Raporlar ve Çıkış kısımları...)
 st.markdown("<br><hr><center>BRN SLEEP PRODUCTS - BİLAL KEMERTAŞ</center>", unsafe_allow_html=True)

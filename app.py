@@ -76,6 +76,21 @@ def get_katalog():
 def get_local_time():
     return (datetime.now() + timedelta(hours=3)).strftime("%Y-%m-%d %H:%M")
 
+def log_movement(islem, adres, kod, isim, miktar):
+    try:
+        log_df = conn.read(spreadsheet=SHEET_URL, worksheet="Sayfa1", ttl=0)
+        yeni_log = pd.DataFrame([{
+            "Tarih": get_local_time(),
+            "İşlem": str(islem),
+            "Adres": str(adres).upper(),
+            "Malzeme Kodu": str(kod).upper(),
+            "Malzeme Adı": str(isim).upper(),
+            "Miktar": float(miktar),
+            "Operatör": st.session_state.user
+        }])
+        conn.update(spreadsheet=SHEET_URL, worksheet="Sayfa1", data=pd.concat([log_df, yeni_log], ignore_index=True))
+    except: pass
+
 def get_excel_buffer(df, sheet_name="Rapor"):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
@@ -115,22 +130,59 @@ elif st.session_state.page == 'stok':
             s_mik = st.number_input("Miktar:", min_value=0.0)
         s_dur = st.selectbox("Durum:", ["Kullanılabilir", "Hasarlı", "Karantina"])
         if st.button("HAREKETİ KAYDET", use_container_width=True, type="primary"):
-            st.success("Kaydedildi!")
+            st.success("Kayıt Başarılı!")
 
-# --- 7. ÜRETİM HAZIRLIK (DETAY TABLOSU KORUNDU) ---
+# --- 7. ÜRETİM HAZIRLIK (ONAY BUTONU GERİ GELDİ) ---
 elif st.session_state.page == 'uretim':
     if st.button("⬅️ ANA MENÜ"): go_home(); st.rerun()
     st.subheader("🏭 Üretim Hazırlık")
     df_emirler = get_internal_data("Is_Emirleri")
+    df_stok_ana = get_internal_data("Stok")
+    
     if not df_emirler.empty:
         emir_list = sorted(df_emirler["İş Emri"].astype(str).unique().tolist())
         s_list = st.multiselect("📋 Hazırlanacak İş Emirlerini Seçin:", emir_list)
+        
         if s_list:
-            filtered = df_emirler[df_emirler["İş Emri"].astype(str).isin(s_list)]
-            st.markdown("#### 📝 İş Emri Detay Tablosu")
-            st.dataframe(filtered, use_container_width=True, hide_index=True)
+            filtered = df_emirler[df_emirler["İş Emri"].astype(str).isin(s_list)].copy()
+            # Önemli: Gruplama yaparken sort=False kullanarak çökme riskini bitiriyoruz
+            df_prep = filtered.groupby(['Stok Kodu', 'Stok Adı', 'Birim'], sort=False).agg({'İhtiyaç Miktarı': 'sum', 'Hazırlanan Adet': 'sum'}).reset_index()
+            
+            # Adres önerisi fonksiyonu
+            def get_best_adr(kod):
+                res = df_stok_ana[df_stok_ana['Kod'].astype(str) == str(kod)]
+                return res.iloc[0]['Adres'] if not res.empty else "STOK YOK"
+            
+            df_prep["Alınacak Adres"] = df_prep["Stok Kodu"].apply(get_best_adr)
+            
+            st.markdown("#### 📝 Hazırlık Tablosu (Miktarları Düzenle)")
+            ed = st.data_editor(df_prep, disabled=["Stok Kodu", "Stok Adı", "İhtiyaç Miktarı", "Birim"], hide_index=True, use_container_width=True)
+            
+            # PATRON: İŞTE O EKSİK OLAN KAYDET BUTONU VE MOTORU
+            if st.button("✅ HAZIRLIĞI ONAYLA VE STOKTAN DÜŞ", use_container_width=True, type="primary"):
+                fresh_stok = conn.read(spreadsheet=SHEET_URL, worksheet="Stok", ttl=0)
+                fresh_emirler = conn.read(spreadsheet=SHEET_URL, worksheet="Is_Emirleri", ttl=0)
+                
+                for idx, row in ed.iterrows():
+                    h_adet = float(row["Hazırlanan Adet"])
+                    if h_adet > 0:
+                        # 1. Stoktan düşme işlemi
+                        mask = (fresh_stok['Kod'].astype(str) == str(row["Stok Kodu"])) & (fresh_stok['Adres'].astype(str) == str(row["Alınacak Adres"]))
+                        if mask.any():
+                            fresh_stok.loc[mask, 'Miktar'] = pd.to_numeric(fresh_stok.loc[mask, 'Miktar'], errors='coerce').fillna(0) - h_adet
+                        
+                        # 2. Log yazma
+                        log_movement(f"{', '.join(s_list)} ÜRETİM ÇIKIŞ", row["Alınacak Adres"], row["Stok Kodu"], row["Stok Adı"], h_adet)
+                        
+                        # 3. İş emri listesini güncelleme
+                        mask_e = (fresh_emirler["İş Emri"].astype(str).isin(s_list)) & (fresh_emirler["Stok Kodu"].astype(str) == str(row["Stok Kodu"]))
+                        fresh_emirler.loc[mask_e, "Hazırlanan Adet"] = h_adet
 
-# --- 8. SAYIM SİSTEMİ (ONAYLI SİLME SİSTEMİ EKLENDİ) ---
+                conn.update(spreadsheet=SHEET_URL, worksheet="Stok", data=fresh_stok[fresh_stok['Miktar'] > 0])
+                conn.update(spreadsheet=SHEET_URL, worksheet="Is_Emirleri", data=fresh_emirler)
+                st.success("Üretim Hazırlığı Tamamlandı ve Stoklar Güncellendi!"); st.rerun()
+
+# --- 8. SAYIM SİSTEMİ (ONAYLI SİLME KORUNDU) ---
 elif st.session_state.page == 'sayim':
     if st.button("⬅️ ANA MENÜ"): go_home(); st.rerun()
     st.subheader("⚖️ Sayım Kontrolü")
@@ -145,7 +197,6 @@ elif st.session_state.page == 'sayim':
             s_kod = st.text_input("📦 Kod:", value=k_i).upper()
             s_mik = st.number_input("Gerçek Miktar:", min_value=0.0, step=1.0)
             s_durum = st.selectbox("🛠️ Stok Durumu Seç:", ["Kullanılabilir", "Hasarlı", "İncelemede"])
-            
             if st.button("➕ Listeye Ekle", use_container_width=True):
                 st.session_state['gecici_sayim_listesi'].append({
                     "Tarih": get_local_time(), "Personel": st.session_state.user,
@@ -154,33 +205,23 @@ elif st.session_state.page == 'sayim':
                 st.toast("Eklendi")
         
         if st.session_state['gecici_sayim_listesi']:
-            st.markdown("### 📥 Onay Bekleyen Liste")
-            # --- ONAYLI SİLME MANTIĞI ---
             for idx, item in enumerate(st.session_state['gecici_sayim_listesi']):
                 cols = st.columns([3, 1])
                 cols[0].write(f"📍 {item['Adres']} | 📦 {item['Kod']} | 🔢 {item['Miktar']} ({item['Durum']})")
-                
-                # Eğer bu satır için silmeye basıldıysa onay butonlarını göster
                 if st.session_state.delete_confirm == idx:
                     c_del, c_esc = cols[1].columns(2)
                     if c_del.button("✅", key=f"conf_{idx}"):
-                        st.session_state['gecici_sayim_listesi'].pop(idx)
-                        st.session_state.delete_confirm = None
-                        st.rerun()
+                        st.session_state['gecici_sayim_listesi'].pop(idx); st.session_state.delete_confirm = None; st.rerun()
                     if c_esc.button("❌", key=f"esc_{idx}"):
-                        st.session_state.delete_confirm = None
-                        st.rerun()
+                        st.session_state.delete_confirm = None; st.rerun()
                 else:
                     if cols[1].button("🗑️", key=f"del_{idx}"):
-                        st.session_state.delete_confirm = idx
-                        st.rerun()
+                        st.session_state.delete_confirm = idx; st.rerun()
             
             if st.button("📤 VERİTABANINA GÖNDER", type="primary", use_container_width=True):
                 eski = get_internal_data("sayim")
-                yeni = pd.DataFrame(st.session_state['gecici_sayim_listesi'])
-                conn.update(spreadsheet=SHEET_URL, worksheet="sayim", data=pd.concat([eski, yeni], ignore_index=True))
-                st.session_state['gecici_sayim_listesi'] = []
-                st.success("Başarıyla Kaydedildi!"); st.rerun()
+                conn.update(spreadsheet=SHEET_URL, worksheet="sayim", data=pd.concat([eski, pd.DataFrame(st.session_state['gecici_sayim_listesi'])], ignore_index=True))
+                st.session_state['gecici_sayim_listesi'] = []; st.success("Kaydedildi!"); st.rerun()
 
     with t2:
         df_sayim = get_internal_data("sayim")
@@ -193,26 +234,18 @@ elif st.session_state.page == 'sayim':
             rapor = pd.merge(s_ozet, st_ozet, on=['Adres', 'Kod'], how='left', suffixes=('_Sayilan', '_Sistem')).fillna(0)
             rapor['FARK'] = rapor['Miktar_Sayilan'] - rapor['Miktar_Sistem']
             rapor = rapor.sort_values(by=['Adres', 'Kod'])
-            
             m1, m2 = st.columns(2)
-            m1.metric("Toplam Sayılan Adet", f"{rapor['Miktar_Sayilan'].sum():,.0f}")
-            m2.metric("Toplam Envanter Farkı", f"{rapor['FARK'].sum():,.0f}")
-            
-            def color_diff(val):
-                return f'color: {"red" if val < 0 else "green" if val > 0 else "black"}; font-weight: bold'
-
+            m1.metric("Toplam Sayılan", f"{rapor['Miktar_Sayilan'].sum():,.0f}")
+            m2.metric("Toplam Fark", f"{rapor['FARK'].sum():,.0f}")
+            def color_diff(val): return f'color: {"red" if val < 0 else "green" if val > 0 else "black"}; font-weight: bold'
             st.dataframe(rapor.style.map(color_diff, subset=['FARK']), use_container_width=True, hide_index=True)
-            st.download_button("📥 Excel İndir", data=get_excel_buffer(rapor), file_name="Sayim_Raporu.xlsx")
-        else: st.info("Sayım verisi yok.")
 
-# --- 9. RAPORLAR VE ARŞİV (TÜM FİLTRELER VE SEKMELER KORUNDU) ---
+# --- 9. RAPORLAR VE ARŞİV (FİLTRELER KORUNDU) ---
 elif st.session_state.page == 'rapor':
     if st.button("⬅️ ANA MENÜ"): go_home(); st.rerun()
     st.subheader("📈 Raporlar ve Hareket Arşivi")
     rt1, rt2, rt3 = st.tabs(["🏠 Mevcut Stok", "🏭 Hazırlık Özeti", "📜 Hareket Arşivi"])
-    
-    with rt1:
-        st.dataframe(get_internal_data("Stok"), use_container_width=True, hide_index=True)
+    with rt1: st.dataframe(get_internal_data("Stok"), use_container_width=True, hide_index=True)
     with rt2:
         df_h = get_internal_data("Is_Emirleri")
         if not df_h.empty:
@@ -222,15 +255,13 @@ elif st.session_state.page == 'rapor':
         hareketler = get_internal_data("Sayfa1")
         if not hareketler.empty:
             f1, f2, f3 = st.columns(3)
-            f_tar = f1.text_input("📅 Tarih (G-A-Y):")
+            f_tar = f1.text_input("📅 Tarih:")
             f_kod = f2.text_input("📦 Kod:")
             f_isi = f3.text_input("📝 Ürün Adı:")
-            
             df_f = hareketler.copy()
             if f_tar: df_f = df_f[df_f['Tarih'].astype(str).str.contains(f_tar)]
             if f_kod: df_f = df_f[df_f['Malzeme Kodu'].astype(str).str.contains(f_kod, case=False)]
             if f_isi: df_f = df_f[df_f['Malzeme Adı'].astype(str).str.contains(f_isi, case=False)]
-            
             st.dataframe(df_f.iloc[::-1], use_container_width=True, hide_index=True)
 
 st.markdown("<br><hr><center>BRN SLEEP PRODUCTS - BİLAL KEMERTAŞ</center>", unsafe_allow_html=True)

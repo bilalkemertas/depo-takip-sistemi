@@ -302,11 +302,13 @@ elif st.session_state.page == 'uretim':
 
     df_emirler_master = get_internal_data("Is_Emirleri")
     if not df_emirler_master.empty:
-        is_emri_listesi = sorted(df_emirler_master["İş Emri"].unique().tolist())
+        # HATA DÜZELTMESİ 1: astype(str) eklendi
+        is_emri_listesi = sorted(df_emirler_master["İş Emri"].astype(str).unique().tolist())
         s_list = st.multiselect("📋 Hazırlanacak İş Emirlerini Seçin:", is_emri_listesi, key="u_sel_multi", placeholder="Birden fazla iş emri seçebilirsiniz...")
         
         if s_list:
-            df_is_emri = df_emirler_master[df_emirler_master["İş Emri"].isin(s_list)].copy()
+            # İş emirleri filtrelenirken tip karmaşasını önlemek için güvenli filtre
+            df_is_emri = df_emirler_master[df_emirler_master["İş Emri"].astype(str).isin(s_list)].copy()
             df_prep = df_is_emri.groupby(['Stok Kodu', 'Stok Adı', 'Birim']).agg({'İhtiyaç Miktarı': 'sum', 'Hazırlanan Adet': 'sum'}).reset_index()
             
             stok_verisi = get_internal_data("Stok")
@@ -348,7 +350,7 @@ elif st.session_state.page == 'uretim':
                         log_movement(f"{secilen_isimler} ÜRETİM ÇIKIŞ", adr_son, row["Stok Kodu"], row["Stok Adı"], fark)
                         
                         kalan = float(row["Hazırlanan Adet"])
-                        mask = (fresh_emirler["İş Emri"].isin(s_list)) & (fresh_emirler["Stok Kodu"].astype(str).str.strip().str.upper() == str(row["Stok Kodu"]).strip().upper())
+                        mask = (fresh_emirler["İş Emri"].astype(str).isin(s_list)) & (fresh_emirler["Stok Kodu"].astype(str).str.strip().str.upper() == str(row["Stok Kodu"]).strip().upper())
                         
                         for i in fresh_emirler[mask].index:
                             iht = float(fresh_emirler.at[i, "İhtiyaç Miktarı"])
@@ -461,8 +463,9 @@ elif st.session_state.page == 'sayim':
                     col_f3, col_f4 = st.columns(2)
                     
                     f_t = col_f1.selectbox("📅 Tarih", ["Tümü"] + sorted(df_s_db["Tarih"].astype(str).unique().tolist(), reverse=True))
-                    sel_k = col_f2.multiselect("📦 Kod", sorted(df_s_db["Kod"].unique().tolist()))
-                    sel_a = col_f3.multiselect("📍 Adres", sorted(df_s_db["Adres"].unique().tolist()))
+                    # HATA DÜZELTMESİ 2 & 3: astype(str) eklendi
+                    sel_k = col_f2.multiselect("📦 Kod", sorted(df_s_db["Kod"].astype(str).unique().tolist()))
+                    sel_a = col_f3.multiselect("📍 Adres", sorted(df_s_db["Adres"].astype(str).unique().tolist()))
                     
                     if "Durum" in df_s_db.columns:
                         durum_listesi = sorted(df_s_db["Durum"].astype(str).unique().tolist())
@@ -474,11 +477,11 @@ elif st.session_state.page == 'sayim':
                 if f_t != "Tümü": 
                     act = act[act["Tarih"] == f_t]
                 if sel_k: 
-                    act = act[act["Kod"].isin(sel_k)]
+                    act = act[act["Kod"].astype(str).isin(sel_k)]
                 if sel_a: 
-                    act = act[act["Adres"].isin(sel_a)]
+                    act = act[act["Adres"].astype(str).isin(sel_a)]
                 if sel_d: 
-                    act = act[act["Durum"].isin(sel_d)]
+                    act = act[act["Durum"].astype(str).isin(sel_d)]
 
                 if not act.empty:
                     say_ozet = act.groupby(['Adres', 'Kod', 'Ürün Adı', 'Durum'])['Miktar'].sum().reset_index()
@@ -535,9 +538,10 @@ elif st.session_state.page == 'rapor':
             st.dataframe(summary, column_config={"%": st.column_config.ProgressColumn("İlerleme", format="%.1f%%", min_value=0, max_value=100)}, use_container_width=True, hide_index=True)
             st.divider()
             
-            secilen = st.selectbox("Detay:", ["Seçiniz..."] + sorted(summary['İş Emri'].unique().tolist()), key="rep_s")
+            # HATA DÜZELTMESİ 4: astype(str) eklendi
+            secilen = st.selectbox("Detay:", ["Seçiniz..."] + sorted(summary['İş Emri'].astype(str).unique().tolist()), key="rep_s")
             if secilen != "Seçiniz...":
-                detay = df_h[df_h['İş Emri'] == secilen].copy()
+                detay = df_h[df_h['İş Emri'].astype(str) == secilen].copy()
                 
                 mamul_listesi = ["TÜMÜ"] + sorted(detay['Mamül Adı'].astype(str).unique().tolist())
                 secilen_mamul = st.selectbox("Mamül Adı Filtresi:", mamul_listesi, key="rep_mamul_s")

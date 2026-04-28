@@ -219,14 +219,20 @@ elif st.session_state.current_screen == "URETIM":
             st.data_editor(f_df, hide_index=True, use_container_width=True)
             if st.button("✅ LİSTEYİ ONAYLA"): st.success("Üretim onayı verildi!")
 
-# --- 5.3 SAYIM GİRİŞİ ---
+# --- 5.3 SAYIM GİRİŞİ (MANUEL ÜRÜN SEÇİMİ GERİ EKLENDİ) ---
 elif st.session_state.current_screen == "SAYIM_GIRIS":
     if st.button("⬅️ ANA MENÜYE DÖN"): set_screen("MAIN")
     st.title("📝 Fiili Sayım Girişi")
     with st.container(border=True):
         c_adr = st.text_input("📍 Sayım Adresi:").upper()
-        c_kod = st.text_input("📦 Kod:").upper()
+        
+        # PATRON, MANUEL SEÇİM KUTUCUĞU BURAYA GELDİ
+        kat_sayim = get_katalog()
+        sec_sayim = st.selectbox("🔍 Ürün Seç (Katalogdan):", ["+ MANUEL GİRİŞ"] + kat_sayim)
+        
+        c_kod = st.text_input("📦 Kod:", value=sec_sayim.split(" | ")[0] if sec_sayim != "+ MANUEL GİRİŞ" else "").upper()
         c_mik = st.number_input("Görülen Miktar:", min_value=0.0)
+        
         if st.button("➕ GEÇİCİ LİSTEYE EKLE", use_container_width=True):
             st.session_state['gecici_sayim_listesi'].append({"Adres": c_adr, "Kod": c_kod, "Miktar": c_mik})
             st.rerun()
@@ -246,7 +252,7 @@ elif st.session_state.current_screen == "SAYIM_GIRIS":
                     st.session_state.delete_confirm = idx
                     st.rerun()
 
-# --- 5.4 SAYIM FARK RAPORU (Yeni Başlıklarla Zırhlı Rapor) ---
+# --- 5.4 SAYIM FARK RAPORU ---
 elif st.session_state.current_screen == "SAYIM_FARK":
     if st.button("⬅️ ANA MENÜYE DÖN"): set_screen("MAIN")
     st.title("⚖️ Envanter Uyuşmazlık Raporu")

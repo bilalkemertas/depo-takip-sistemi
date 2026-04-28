@@ -109,7 +109,10 @@ def get_internal_data(worksheet_name):
 def get_katalog():
     df = get_internal_data("Stok")
     if not df.empty:
-        df['Arama'] = df['Kod'].astype(str) + " | " + df['İsim'].astype(str)
+        # Sütun isimleri Malzeme Kodu ve Malzeme Adı olarak güncellendi
+        kod_col = 'Malzeme Kodu' if 'Malzeme Kodu' in df.columns else 'Kod'
+        isim_col = 'Malzeme Adı' if 'Malzeme Adı' in df.columns else 'İsim'
+        df['Arama'] = df[kod_col].astype(str) + " | " + df[isim_col].astype(str)
         return sorted(df['Arama'].unique().tolist())
     return []
 
@@ -139,18 +142,35 @@ with h_col2:
 st.divider()
 
 # ==========================================
-# 4. MERKEZİ ANA MENÜ (SIDEBARSIZ YAPI)
+# 4. MERKEZİ ANA MENÜ (DİNAMİK DASHBOARD)
 # ==========================================
 
 if st.session_state.current_screen == "MAIN":
-    # GÖRSEL METRİKLER (3ff057 Birebir)
+    # --- DİNAMİK HESAPLAMA MOTORU ---
     df_ana = get_internal_data("Stok")
+    
     if not df_ana.empty:
+        # Sütun bazlı dinamik hesaplama
+        k_col = 'Malzeme Kodu' if 'Malzeme Kodu' in df_ana.columns else 'Kod'
+        m_col = 'Miktar'
+        a_col = 'Adres'
+        d_col = 'Durum'
+
+        sku_count = len(df_ana[k_col].unique()) if k_col in df_ana.columns else 0
+        total_inv = pd.to_numeric(df_ana[m_col], errors='coerce').sum() if m_col in df_ana.columns else 0
+        active_adr = len(df_ana[a_col].unique()) if a_col in df_ana.columns else 0
+        
+        # Karantina hesabı (Durum sütununa göre)
+        karantina_stok = 0
+        if d_col in df_ana.columns:
+            karantina_stok = pd.to_numeric(df_ana[df_ana[d_col] == 'Karantina'][m_col], errors='coerce').sum()
+
+        # METRİKLERİ EKRANA BAS (Canlı Veri)
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("SKU Çeşitliliği", "1.628")
-        m2.metric("Toplam Envanter", "259.645.317")
-        m3.metric("Aktif Raf Adresi", "2")
-        m4.metric("Karantina Stok", "142")
+        m1.metric("SKU Çeşitliliği", f"{sku_count:,}")
+        m2.metric("Toplam Envanter", f"{total_inv:,.0f}")
+        m3.metric("Aktif Raf Adresi", f"{active_adr}")
+        m4.metric("Karantina Stok", f"{karantina_stok:,.0f}")
     
     st.markdown("<br>", unsafe_allow_html=True)
     
@@ -166,7 +186,7 @@ if st.session_state.current_screen == "MAIN":
     with col_right:
         st.markdown("#### ⚙️ GELİŞMİŞ WMS & ANALİZ")
         if st.button("⚖️ SAYIM FARK RAPORLARI", use_container_width=True): set_screen("SAYIM_FARK")
-        if st.button("🔄 DİĞER MO;DÜLLER VE ROTA", use_container_width=True): set_screen("OCA")
+        if st.button("🔄 DİĞER MODÜLLER VE ROTA", use_container_width=True): set_screen("OCA")
         if st.button("📈 HAREKET ARŞİVİ & LOGLAR", use_container_width=True): set_screen("ARSIV")
 
 # ==========================================
@@ -183,7 +203,7 @@ elif st.session_state.current_screen == "STOK":
         sec = st.selectbox("🔍 Ürün Arama:", ["+ MANUEL GİRİŞ"] + kat)
         c1, c2 = st.columns(2)
         with c1:
-            in_kod = st.text_input("📦 Stok Kodu:", value=sec.split(" | ")[0] if sec != "+ MANUEL GİRİŞ" else "").upper()
+            in_kod = st.text_input("📦 Malzeme Kodu:", value=sec.split(" | ")[0] if sec != "+ MANUEL GİRİŞ" else "").upper()
             in_lot = st.text_input("🔢 Parti / Lot No:").upper()
         with c2:
             in_adr = st.text_input("📍 Raf Adresi:").upper()
@@ -193,22 +213,19 @@ elif st.session_state.current_screen == "STOK":
         if st.button("KAYDI TAMAMLA", use_container_width=True, type="primary"):
             st.success("Stok hareketi veritabanına işlendi!")
 
-# --- 5.2 ÜRETİM HAZIRLIK (ÇİFT FİLTRE: İŞ EMRİ + MAMÜL) ---
+# --- 5.2 ÜRETİM HAZIRLIK ---
 elif st.session_state.current_screen == "URETIM":
     if st.button("⬅️ ANA MENÜYE DÖN"): set_screen("MAIN")
     st.title("🏭 Üretim Malzeme Hazırlama")
     df_e = get_internal_data("Is_Emirleri")
     if not df_e.empty:
-        # FİLTRE 1: İş Emri (4c4597'deki gibi)
         sel_e = st.multiselect("📋 İş Emirlerini Filtrele:", sorted(df_e["İş Emri"].unique().tolist()))
         if sel_e:
             t_df = df_e[df_e["İş Emri"].astype(str).isin(sel_e)]
-            # FİLTRE 2: Mamül Kodu
             sel_m = st.multiselect("🏗️ Mamül Koduna Göre Süz:", sorted(t_df["Mamül Kodu"].unique().tolist()))
             f_df = t_df.copy()
             if sel_m: f_df = f_df[f_df["Mamül Kodu"].astype(str).isin(sel_m)]
             
-            # Tamamlanma Yüzdesi Hesabı
             f_df['Doluluk %'] = (pd.to_numeric(f_df['Hazırlanan Adet'], errors='coerce').fillna(0) / 
                                  pd.to_numeric(f_df['İhtiyaç Miktarı'], errors='coerce').fillna(0) * 100).round(1).fillna(0)
             
@@ -216,13 +233,13 @@ elif st.session_state.current_screen == "URETIM":
             st.data_editor(f_df, hide_index=True, use_container_width=True)
             if st.button("✅ LİSTEYİ ONAYLA"): st.success("Üretim onayı verildi!")
 
-# --- 5.3 SAYIM GİRİŞİ (ONAYLI SİLME) ---
+# --- 5.3 SAYIM GİRİŞİ ---
 elif st.session_state.current_screen == "SAYIM_GIRIS":
     if st.button("⬅️ ANA MENÜYE DÖN"): set_screen("MAIN")
     st.title("📝 Fiili Sayım Girişi")
     with st.container(border=True):
         c_adr = st.text_input("📍 Sayım Adresi:").upper()
-        c_kod = st.text_input("📦 Ürün Kodu:").upper()
+        c_kod = st.text_input("📦 Malzeme Kodu:").upper()
         c_mik = st.number_input("Görülen Miktar:", min_value=0.0)
         if st.button("➕ GEÇİCİ LİSTEYE EKLE", use_container_width=True):
             st.session_state['gecici_sayim_listesi'].append({"Adres": c_adr, "Kod": c_kod, "Miktar": c_mik})
@@ -233,7 +250,6 @@ elif st.session_state.current_screen == "SAYIM_GIRIS":
         for idx, item in enumerate(st.session_state['gecici_sayim_listesi']):
             cols = st.columns([4, 1])
             cols[0].info(f"{item['Adres']} | {item['Kod']} | {item['Miktar']}")
-            # GÜVENLİK KİLİDİ
             if st.session_state.delete_confirm == idx:
                 if cols[1].button("✅", key=f"y_{idx}"):
                     st.session_state['gecici_sayim_listesi'].pop(idx)
@@ -244,20 +260,20 @@ elif st.session_state.current_screen == "SAYIM_GIRIS":
                     st.session_state.delete_confirm = idx
                     st.rerun()
 
-# --- 5.4 SAYIM FARK RAPORU (3 FİLTRE: ADRES, KOD, İSİM) ---
+# --- 5.4 SAYIM FARK RAPORU ---
 elif st.session_state.current_screen == "SAYIM_FARK":
     if st.button("⬅️ ANA MENÜYE DÖN"): set_screen("MAIN")
     st.title("⚖️ Envanter Uyuşmazlık Raporu")
     df_say = get_internal_data("sayim")
     df_stk = get_internal_data("Stok")
     if not df_say.empty:
-        # ANALİZ MOTORU
         s_g = df_say.groupby(['Adres', 'Kod'])['Miktar'].sum().reset_index()
-        t_g = df_stk.groupby(['Adres', 'Kod', 'İsim'])['Miktar'].sum().reset_index()
+        t_g = df_stk.groupby(['Adres', 'Malzeme Kodu', 'Malzeme Adı'])['Miktar'].sum().reset_index()
+        t_g.rename(columns={'Malzeme Kodu': 'Kod', 'Malzeme Adı': 'İsim'}, inplace=True)
+        
         rapor = pd.merge(s_g, t_g, on=['Adres', 'Kod'], how='left', suffixes=('_Sayılan', '_Sistem')).fillna(0)
         rapor['FARK'] = rapor['Miktar_Sayılan'] - rapor['Miktar_Sistem']
         
-        # 3'LÜ FİLTRE PANELİ (ZIRH)
         st.markdown("#### 🔍 Rapor Filtreleme")
         rf1, rf2, rf3 = st.columns(3)
         fa = rf1.text_input("📍 Adres Filtre:").upper()
@@ -270,57 +286,34 @@ elif st.session_state.current_screen == "SAYIM_FARK":
         
         st.dataframe(rapor, use_container_width=True, hide_index=True)
 
-# --- 5.5 OCA MODÜLLERİ & S-SHAPE (YENİ NESİL) ---
+# --- 5.5 OCA MODÜLLERİ ---
 elif st.session_state.current_screen == "OCA":
     if st.button("⬅️ ANA MENÜYE DÖN"): set_screen("MAIN")
     st.title("⚙️ Gelişmiş WMS Modülleri (OCA)")
-    
     tabs = st.tabs(["🔄 S-SHAPE ROTALAMA", "🏗️ VLM KONTROL", "⚙️ RAF ADLANDIRMA", "📋 ÇEKME LİSTESİ"])
-    
-    with tabs[0]: # S-SHAPE ROTALAMA
+    with tabs[0]:
         st.success("✅ Algoritma: S-Shape Path Optimization Active")
-        st.info("Personel her koridora sırayla girer ve koridoru tam tur geçerek bir sonraki koridora tersten girer.")
-        st.markdown("#### Optimize Edilmiş Toplama Rotası")
-        st.write("1. Koridor A (01 -> 20) -> 2. Koridor B (20 -> 01) -> 3. Koridor C (01 -> 20)")
         st.button("ROTAYI PERSONELE GÖNDER")
-        
-    with tabs[1]: # VLM (Vertical Lift)
+    with tabs[1]:
         st.warning("⚠️ VLM Donanım Bağlantısı Bekleniyor...")
-        tray = st.number_input("Tepsi Numarası (Tray No):", 1, 100)
-        if st.button("TEPSİYİ GETİR"): st.info(f"{tray} nolu tepsi operatör penceresine yönlendiriliyor.")
-        
-    with tabs[2]: # RAF ADLANDIRMA
-        st.write("Sistematik Bin/Göz Adlandırma")
+        tray = st.number_input("Tepsi Numarası:", 1, 100)
+    with tabs[2]:
         c1, c2, c3 = st.columns(3)
         v1 = c1.text_input("Bölge Kod:")
         v2 = c2.text_input("Raf No:")
-        v3 = c3.text_input("Kat/Göz No:")
-        if st.button("KOD ÜRET"): st.success(f"Oluşturulan: {v1}-{v2}-{v3}")
-
-    with tabs[3]: # ÇEKME LİSTESİ
-        df_p = get_internal_data("Is_Emirleri")
-        if not df_p.empty:
-            sel_p = st.multiselect("Toplanacak Emirleri Seçin:", df_p["İş Emri"].unique())
-            if st.button("LİSTEYİ OLUŞTUR"): st.dataframe(df_p[df_p["İş Emri"].isin(sel_p)])
+        v3 = c3.text_input("Kat No:")
+        if st.button("KOD ÜRET"): st.success(f"{v1}-{v2}-{v3}")
 
 # --- 5.6 ARŞİV VE LOGLAR ---
 elif st.session_state.current_screen == "ARSIV":
     if st.button("⬅️ ANA MENÜYE DÖN"): set_screen("MAIN")
     st.title("📈 Hareket Arşivi ve Analiz")
-    t1, t2, t3 = st.tabs(["🏠 Mevcut Stok Veritabanı", "🏭 Hazırlık Raporu (Arşiv)", "📜 Sistem Logları"])
-    
+    t1, t2, t3 = st.tabs(["🏠 Stok Veritabanı", "🏭 Hazırlık Raporu", "📜 Sistem Logları"])
     with t1: st.dataframe(get_internal_data("Stok"), use_container_width=True, hide_index=True)
-    with t2:
-        df_lh = get_internal_data("Is_Emirleri")
-        # ARŞİVDE ÇİFT FİLTRE KORUNDU
-        r_e = st.multiselect("İş Emri Süz:", sorted(df_lh["İş Emri"].unique().tolist()) if not df_lh.empty else [])
-        res = df_lh[df_lh["İş Emri"].isin(r_e)] if r_e else df_lh
-        st.dataframe(res, use_container_width=True, hide_index=True)
     with t3:
-        # LOGLARDA 3'LÜ FİLTRE KORUNDU
         logs = get_internal_data("Sayfa1")
-        f_col1, f_col2, f_col3 = st.columns(3)
-        ft, fk, fi = f_col1.text_input("Tarih:"), f_col2.text_input("Kod:"), f_col3.text_input("İsim:")
+        f1, f2, f3 = st.columns(3)
+        ft, fk, fi = f1.text_input("Tarih:"), f2.text_input("Kod:"), f3.text_input("İsim:")
         if not logs.empty:
             if ft: logs = logs[logs['Tarih'].astype(str).str.contains(ft)]
             if fk: logs = logs[logs['Malzeme Kodu'].astype(str).str.contains(fk)]

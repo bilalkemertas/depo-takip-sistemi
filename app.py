@@ -327,4 +327,4 @@ elif st.session_state.current_screen == "ARSIV":
             if fi: logs = logs[logs['Malzeme Adı'].astype(str).str.contains(fi, case=False)]
             st.dataframe(logs.iloc[::-1], use_container_width=True, hide_index=True)
 
-st.markdown("<br><hr><center><b>BRN SLEEP PRODUCTS - BİLAL KEMERTAŞ</b><br>v34.0 Komuta Merkezi</center>", unsafe_allow_html=True)
+st.markdown("<br><hr><center><b>BRN SLEEP PRODUCTS - BİLAL KEMERTAŞ</b><br>2026</center>", unsafe_allow_html=True)

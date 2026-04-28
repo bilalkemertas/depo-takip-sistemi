@@ -130,7 +130,7 @@ def set_screen(name):
 # --- ÜST BİLGİ VE ÇIKIŞ ---
 h_col1, h_col2 = st.columns([4, 1])
 with h_col1:
-    st.markdown(f"## 📦 BRN WMS v34.0 | Hoş geldin, {st.session_state.user.upper()}")
+    st.markdown(f"## 📦 BRN WMS | Hoş geldin, {st.session_state.user.upper()}")
 with h_col2:
     if st.button("🔴 SİSTEMİ KAPAT", use_container_width=True):
         st.session_state.logged_in = False

@@ -75,7 +75,7 @@ if 'current_screen' not in st.session_state:
 
 # GİRİŞ EKRANI (LOGİN)
 if not st.session_state.logged_in:
-    st.markdown("<br><h1 style='text-align:center; color:#1b5e20;'>🔐 BRN LOJİSTİK KOMUTA MERKEZİ</h1>", unsafe_allow_html=True)
+    st.markdown("<br><h1 style='text-align:center; color:#1b5e20;'>🔐 BRN DEPO TAKİP SİSTEMİ</h1>", unsafe_allow_html=True)
     _, login_col, _ = st.columns([1, 1.2, 1])
     with login_col:
         with st.form("Login_Form"):
@@ -166,7 +166,7 @@ if st.session_state.current_screen == "MAIN":
     with col_right:
         st.markdown("#### ⚙️ GELİŞMİŞ WMS & ANALİZ")
         if st.button("⚖️ SAYIM FARK RAPORLARI", use_container_width=True): set_screen("SAYIM_FARK")
-        if st.button("🔄 OCA MODÜLLERİ & S-SHAPE", use_container_width=True): set_screen("OCA")
+        if st.button("🔄 DİĞER MO;DÜLLER VE ROTA", use_container_width=True): set_screen("OCA")
         if st.button("📈 HAREKET ARŞİVİ & LOGLAR", use_container_width=True): set_screen("ARSIV")
 
 # ==========================================

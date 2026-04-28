@@ -181,7 +181,7 @@ if st.session_state.current_screen == "MAIN":
         if st.button("🔄 DİĞER MODÜLLER VE ROTA", use_container_width=True): set_screen("OCA")
         if st.button("📈 HAREKET ARŞİVİ & LOGLAR", use_container_width=True): set_screen("ARSIV")
 
-# --- 5.1 STOK HAREKETLERİ (DİNAMİK ADRES ALANLARI GELDİ) ---
+# --- 5.1 STOK HAREKETLERİ ---
 elif st.session_state.current_screen == "STOK":
     if st.button("⬅️ ANA MENÜYE DÖN"): set_screen("MAIN")
     st.title("📊 Malzeme Hareket Yönetimi")
@@ -198,14 +198,11 @@ elif st.session_state.current_screen == "STOK":
             in_mik = st.number_input("İşlem Miktarı:", min_value=0.0)
             in_neden = st.selectbox("📝 İşlem Nedeni (OCA):", ["Normal Operasyon", "Fire", "Numune", "Sayım Farkı"])
         
-        # PATRON, ADRES MANTIĞI BURADA DİNAMİKLEŞTİ
         st.markdown("---")
         adr_col1, adr_col2 = st.columns(2)
-        
         with adr_col1:
             if move_type in ["ÇIKIŞ", "İÇ TRANSFER"]:
                 in_src_adr = st.text_input("📍 Kaynak Adres (Nereden):", key="src_adr").upper()
-        
         with adr_col2:
             if move_type in ["GİRİŞ", "İÇ TRANSFER"]:
                 in_dst_adr = st.text_input("📍 Hedef Adres (Nereye):", key="dst_adr").upper()
@@ -259,23 +256,40 @@ elif st.session_state.current_screen == "SAYIM_GIRIS":
                     st.session_state.delete_confirm = idx
                     st.rerun()
 
+# --- 5.4 SAYIM FARK RAPORU (MALZEME ADI EKLENDİ) ---
 elif st.session_state.current_screen == "SAYIM_FARK":
     if st.button("⬅️ ANA MENÜYE DÖN"): set_screen("MAIN")
     st.title("⚖️ Envanter Uyuşmazlık Raporu")
     df_say = get_internal_data("sayim")
     df_stk = get_internal_data("Stok")
+    
     if not df_say.empty and not df_stk.empty:
+        # 1. Sayım verilerini topla
         s_g = df_say.groupby(['Adres', 'Kod'])['Miktar'].sum().reset_index()
+        
+        # 2. Sistem (Stok) verilerini topla - İSİM sütununu da dahil ediyoruz
         t_g = df_stk.groupby(['Adres', 'Kod', 'İsim'])['Miktar'].sum().reset_index()
+        
+        # 3. İki tabloyu ADRES ve KOD üzerinden birleştir
         rapor = pd.merge(s_g, t_g, on=['Adres', 'Kod'], how='left', suffixes=('_Sayılan', '_Sistem')).fillna(0)
+        
+        # 4. Farkı hesapla
         rapor['FARK'] = rapor['Miktar_Sayılan'] - rapor['Miktar_Sistem']
+        
+        # 5. Sütun isimlerini son kullanıcı için güzelleştir
+        rapor = rapor[['Adres', 'Kod', 'İsim', 'Miktar_Sayılan', 'Miktar_Sistem', 'FARK']]
+        rapor.columns = ['📍 Adres', '📦 Kod', '📝 Malzeme Adı', '🔢 Sayılan', '💻 Sistem', '⚖️ FARK']
+        
+        st.markdown("#### 🔍 Rapor Filtreleme")
         rf1, rf2, rf3 = st.columns(3)
         fa = rf1.text_input("📍 Adres Filtre:").upper()
         fk = rf2.text_input("📦 Kod Filtre:").upper()
         fi = rf3.text_input("📝 İsim Filtre:").upper()
-        if fa: rapor = rapor[rapor['Adres'].astype(str).str.contains(fa)]
-        if fk: rapor = rapor[rapor['Kod'].astype(str).str.contains(fk)]
-        if fi: rapor = rapor[rapor['İsim'].astype(str).str.contains(fi, case=False)]
+        
+        if fa: rapor = rapor[rapor['📍 Adres'].astype(str).str.contains(fa)]
+        if fk: rapor = rapor[rapor['📦 Kod'].astype(str).str.contains(fk)]
+        if fi: rapor = rapor[rapor['📝 Malzeme Adı'].astype(str).str.contains(fi, case=False)]
+        
         st.dataframe(rapor, use_container_width=True, hide_index=True)
 
 elif st.session_state.current_screen == "OCA":

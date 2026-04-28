@@ -8,7 +8,7 @@ from streamlit_gsheets import GSheetsConnection
 # 1. SAYFA AYARLARI VE MERKEZİ MENÜ TASARIMI (CSS)
 # ==========================================
 st.set_page_config(
-    page_title="Bilal BRN Depo Pro v34.0",
+    page_title="Bilal BRN Depo Pro",
     layout="wide",
     page_icon="📦"
 )

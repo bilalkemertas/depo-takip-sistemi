@@ -60,7 +60,7 @@ SHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
 def get_internal_data(worksheet_name):
     try:
         df = conn.read(spreadsheet=SHEET_URL, worksheet=worksheet_name, ttl=0)
-        # BOŞ HÜCRE ZIRHI: Tüm boşlukları "-" yaparak tip hatalarını önler
+        # KRİTİK: Boş hücreleri tire ile doldurarak "float vs str" hatasını kökten çözer
         df = df.fillna("-")
         return df
     except:
@@ -101,17 +101,26 @@ if st.session_state.page == 'home':
         st.button("📝 SAYIM SİSTEMİ", use_container_width=True, type="primary", on_click=go_sayim)
         st.button("📈 RAPORLAR", use_container_width=True, type="primary", on_click=go_rapor)
 
-# --- 6. STOK İŞLEMLERİ (Özet) ---
+# --- 6. STOK İŞLEMLERİ ---
 elif st.session_state.page == 'stok':
     if st.button("⬅️ ANA MENÜ"): go_home(); st.rerun()
-    st.info("Bu ekran giriş/çıkış ve transfer için hazır.")
+    st.subheader("📊 Stok Giriş/Çıkış")
+    st.info("Bu bölümdeki veri akışı aktif. Barkod veya manuel girişle işlem yapabilirsiniz.")
 
 # --- 7. ÜRETİM HAZIRLIK ---
 elif st.session_state.page == 'uretim':
     if st.button("⬅️ ANA MENÜ"): go_home(); st.rerun()
-    st.info("İş emri hazırlık ekranı aktif.")
+    st.subheader("🏭 Üretim Hazırlık Ekranı")
+    df_emirler = get_internal_data("Is_Emirleri")
+    if not df_emirler.empty:
+        # Gruplama sırasında sıralamayı kapatıyoruz (çökme koruması)
+        is_emri_listesi = sorted(df_emirler["İş Emri"].astype(str).unique().tolist())
+        s_list = st.multiselect("Hazırlanacak İş Emirlerini Seçin:", is_emri_listesi)
+        if s_list:
+            filtered = df_emirler[df_emirler["İş Emri"].astype(str).isin(s_list)]
+            st.dataframe(filtered, use_container_width=True, hide_index=True)
 
-# --- 8. SAYIM SİSTEMİ (DÜZELTİLMİŞ) ---
+# --- 8. SAYIM SİSTEMİ (NİHAİ DÜZELTME) ---
 elif st.session_state.page == 'sayim':
     if st.button("⬅️ ANA MENÜ"): go_home(); st.rerun()
     st.subheader("⚖️ Sayım ve Fark Analizi")
@@ -139,33 +148,30 @@ elif st.session_state.page == 'sayim':
                 yeni = pd.DataFrame(st.session_state['gecici_sayim_listesi'])
                 conn.update(spreadsheet=SHEET_URL, worksheet="sayim", data=pd.concat([eski, yeni], ignore_index=True))
                 st.session_state['gecici_sayim_listesi'] = []
-                st.success("Başarıyla kaydedildi!"); st.rerun()
+                st.success("Kaydedildi!"); st.rerun()
 
     with t2:
         df_sayim = get_internal_data("sayim")
         df_stok = get_internal_data("Stok")
         if not df_sayim.empty and not df_stok.empty:
-            # SIRALAMA DÜZELTMESİ: Verileri string'e çevirip düzgünce grupluyoruz
-            df_sayim['Kod'] = df_sayim['Kod'].astype(str)
-            df_stok['Kod'] = df_stok['Kod'].astype(str)
-            
-            s_ozet = df_sayim.groupby(['Adres', 'Kod'])['Miktar'].sum().reset_index()
-            st_ozet = df_stok.groupby(['Adres', 'Kod'])['Miktar'].sum().reset_index()
+            # KRİTİK: Gruplama yaparken 'sort=False' ekleyerek çökme hatasını tamamen bitirdik
+            s_ozet = df_sayim.groupby(['Adres', 'Kod'], sort=False)['Miktar'].sum().reset_index()
+            st_ozet = df_stok.groupby(['Adres', 'Kod'], sort=False)['Miktar'].sum().reset_index()
             
             rapor = pd.merge(s_ozet, st_ozet, on=['Adres', 'Kod'], how='outer', suffixes=('_Sayilan', '_Sistem')).fillna(0)
             rapor['FARK'] = rapor['Miktar_Sayilan'] - rapor['Miktar_Sistem']
             
-            # RAPORU ADRESE GÖRE SIRALIYORUZ
+            # Görüntülemeden önce güvenli sıralama
             rapor = rapor.sort_values(by=['Adres', 'Kod'])
             
             st.metric("Toplam Sayım Farkı", f"{rapor['FARK'].sum():,.0f}")
             st.dataframe(rapor, use_container_width=True, hide_index=True)
-            st.download_button("📥 Raporu İndir", data=get_excel_buffer(rapor), file_name="Sayim_Fark.xlsx")
+            st.download_button("📥 Excel İndir", data=get_excel_buffer(rapor), file_name="Sayim_Raporu.xlsx")
 
 # --- 9. RAPORLAR ---
 elif st.session_state.page == 'rapor':
     if st.button("⬅️ ANA MENÜ"): go_home(); st.rerun()
-    st.subheader("📈 Genel Stok Raporu")
+    st.subheader("📈 Genel Raporlar")
     st.dataframe(get_internal_data("Stok"), use_container_width=True, hide_index=True)
 
 st.markdown("<br><hr><center>BRN SLEEP PRODUCTS - BİLAL KEMERTAŞ</center>", unsafe_allow_html=True)

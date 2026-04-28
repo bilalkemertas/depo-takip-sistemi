@@ -219,29 +219,35 @@ elif st.session_state.current_screen == "URETIM":
             st.data_editor(f_df, hide_index=True, use_container_width=True)
             if st.button("✅ LİSTEYİ ONAYLA"): st.success("Üretim onayı verildi!")
 
-# --- 5.3 SAYIM GİRİŞİ (MANUEL ÜRÜN SEÇİMİ GERİ EKLENDİ) ---
+# --- 5.3 SAYIM GİRİŞİ ---
 elif st.session_state.current_screen == "SAYIM_GIRIS":
     if st.button("⬅️ ANA MENÜYE DÖN"): set_screen("MAIN")
     st.title("📝 Fiili Sayım Girişi")
     with st.container(border=True):
         c_adr = st.text_input("📍 Sayım Adresi:").upper()
         
-        # PATRON, MANUEL SEÇİM KUTUCUĞU BURAYA GELDİ
         kat_sayim = get_katalog()
         sec_sayim = st.selectbox("🔍 Ürün Seç (Katalogdan):", ["+ MANUEL GİRİŞ"] + kat_sayim)
         
         c_kod = st.text_input("📦 Kod:", value=sec_sayim.split(" | ")[0] if sec_sayim != "+ MANUEL GİRİŞ" else "").upper()
-        c_mik = st.number_input("Görülen Miktar:", min_value=0.0)
+        
+        # PATRON, DURUM SEÇİMİ VE MİKTAR BURAYA GELDİ
+        col_c1, col_c2 = st.columns(2)
+        with col_c1:
+            c_mik = st.number_input("Görülen Miktar:", min_value=0.0)
+        with col_c2:
+            c_durum = st.selectbox("🛠️ Stok Durumu Seç:", ["Kullanılabilir", "Hasarlı", "İncelemede", "Blokeli"])
         
         if st.button("➕ GEÇİCİ LİSTEYE EKLE", use_container_width=True):
-            st.session_state['gecici_sayim_listesi'].append({"Adres": c_adr, "Kod": c_kod, "Miktar": c_mik})
+            st.session_state['gecici_sayim_listesi'].append({"Adres": c_adr, "Kod": c_kod, "Miktar": c_mik, "Durum": c_durum})
             st.rerun()
             
     if st.session_state['gecici_sayim_listesi']:
         st.markdown("#### Onay Bekleyen Kalemler")
         for idx, item in enumerate(st.session_state['gecici_sayim_listesi']):
             cols = st.columns([4, 1])
-            cols[0].info(f"{item['Adres']} | {item['Kod']} | {item['Miktar']}")
+            # Listede durumu da gösteriyoruz
+            cols[0].info(f"📍 {item['Adres']} | 📦 {item['Kod']} | 🔢 {item['Miktar']} | 🛠️ {item['Durum']}")
             if st.session_state.delete_confirm == idx:
                 if cols[1].button("✅", key=f"y_{idx}"):
                     st.session_state['gecici_sayim_listesi'].pop(idx)
@@ -259,11 +265,9 @@ elif st.session_state.current_screen == "SAYIM_FARK":
     df_say = get_internal_data("sayim")
     df_stk = get_internal_data("Stok")
     if not df_say.empty and not df_stk.empty:
-        # Gruplama - Yeni başlıklar: Adres, Kod, İsim, Miktar
         s_g = df_say.groupby(['Adres', 'Kod'])['Miktar'].sum().reset_index()
         t_g = df_stk.groupby(['Adres', 'Kod', 'İsim'])['Miktar'].sum().reset_index()
         
-        # Merge - İsim sütununu burada koruyoruz
         rapor = pd.merge(s_g, t_g, on=['Adres', 'Kod'], how='left', suffixes=('_Sayılan', '_Sistem')).fillna(0)
         rapor['FARK'] = rapor['Miktar_Sayılan'] - rapor['Miktar_Sistem']
         

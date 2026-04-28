@@ -64,7 +64,7 @@ st.markdown("""
         background-color: #ffffff;
         padding: 25px;
         border-radius: 18px;
-        border: 2px solid #1b5e20; /* Çerçeveyi de biraz belirginleştirdim */
+        border: 2px solid #1b5e20; 
         box-shadow: 4px 4px 10px rgba(0,0,0,0.1);
     }
     
@@ -181,10 +181,7 @@ if st.session_state.current_screen == "MAIN":
         if st.button("🔄 DİĞER MODÜLLER VE ROTA", use_container_width=True): set_screen("OCA")
         if st.button("📈 HAREKET ARŞİVİ & LOGLAR", use_container_width=True): set_screen("ARSIV")
 
-# ==========================================
-# 5. ALT EKRANLAR
-# ==========================================
-
+# --- 5.1 STOK HAREKETLERİ (DİNAMİK ADRES ALANLARI GELDİ) ---
 elif st.session_state.current_screen == "STOK":
     if st.button("⬅️ ANA MENÜYE DÖN"): set_screen("MAIN")
     st.title("📊 Malzeme Hareket Yönetimi")
@@ -192,16 +189,29 @@ elif st.session_state.current_screen == "STOK":
         move_type = st.selectbox("İşlem Tipi Seçin:", ["GİRİŞ", "ÇIKIŞ", "İÇ TRANSFER"])
         kat = get_katalog()
         sec = st.selectbox("🔍 Ürün Arama:", ["+ MANUEL GİRİŞ"] + kat)
+        
         c1, c2 = st.columns(2)
         with c1:
             in_kod = st.text_input("📦 Kod:", value=sec.split(" | ")[0] if sec != "+ MANUEL GİRİŞ" else "").upper()
             in_lot = st.text_input("🔢 Parti / Lot No:").upper()
         with c2:
-            in_adr = st.text_input("📍 Adres:", key="stok_adr").upper()
             in_mik = st.number_input("İşlem Miktarı:", min_value=0.0)
-        in_neden = st.selectbox("📝 İşlem Nedeni (OCA):", ["Normal Operasyon", "Fire", "Numune", "Sayım Farkı"])
+            in_neden = st.selectbox("📝 İşlem Nedeni (OCA):", ["Normal Operasyon", "Fire", "Numune", "Sayım Farkı"])
+        
+        # PATRON, ADRES MANTIĞI BURADA DİNAMİKLEŞTİ
+        st.markdown("---")
+        adr_col1, adr_col2 = st.columns(2)
+        
+        with adr_col1:
+            if move_type in ["ÇIKIŞ", "İÇ TRANSFER"]:
+                in_src_adr = st.text_input("📍 Kaynak Adres (Nereden):", key="src_adr").upper()
+        
+        with adr_col2:
+            if move_type in ["GİRİŞ", "İÇ TRANSFER"]:
+                in_dst_adr = st.text_input("📍 Hedef Adres (Nereye):", key="dst_adr").upper()
+        
         if st.button("KAYDI TAMAMLA", use_container_width=True, type="primary"):
-            st.success("Stok hareketi veritabanına işlendi!")
+            st.success(f"{move_type} işlemi veritabanına başarıyla işlendi!")
 
 elif st.session_state.current_screen == "URETIM":
     if st.button("⬅️ ANA MENÜYE DÖN"): set_screen("MAIN")

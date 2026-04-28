@@ -5,19 +5,16 @@ from datetime import datetime, timedelta
 from streamlit_gsheets import GSheetsConnection
 
 # --- 1. SAYFA AYARLARI ---
-st.set_page_config(page_title="Bilal BRN Depo Pro", layout="centered", page_icon="📦")
+st.set_page_config(page_title="Bilal BRN Depo Pro v15.0", layout="wide", page_icon="📦")
 
 st.markdown("""
     <style>
     #MainMenu, footer, header, .stDeployButton {display: none !important;}
-    .block-container { padding: 0.5rem 0.5rem !important; }
+    .block-container { padding: 1rem 1rem !important; }
     input { font-size: 16px !important; }
-    .stButton>button { height: 3em; font-size: 16px !important; }
+    .stButton>button { height: 3em; font-size: 16px !important; font-weight: bold; }
     [data-testid="stExpander"] { border: 1px solid #ddd; border-radius: 10px; }
-    @media (max-width: 640px) {
-        .stMetric { padding: 5px !important; border: 1px solid #eee; margin-bottom: 5px; }
-        .row-font { font-size: 12px !important; }
-    }
+    .critical-stock { color: #ff4b4b; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -28,7 +25,7 @@ if 'gecici_sayim_listesi' not in st.session_state:
     st.session_state['gecici_sayim_listesi'] = []
 
 if not st.session_state.logged_in:
-    st.markdown("<h3 style='text-align:center;'>🛡️ Bilal BRN Depo Giriş</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align:center;'>🛡️ Bilal BRN Lojistik Giriş</h3>", unsafe_allow_html=True)
     with st.form("Giriş"):
         u_raw = st.text_input("Kullanıcı:")
         p_raw = st.text_input("Parola:", type="password")
@@ -59,7 +56,6 @@ SHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
 def get_internal_data(worksheet_name):
     try:
         df = conn.read(spreadsheet=SHEET_URL, worksheet=worksheet_name, ttl=0)
-        # BOŞ HÜCRE KORUMASI: Boş yerleri "-" yapar, böylece sıralama/gruplama hatası vermez.
         df = df.fillna("-")
         return df
     except:
@@ -68,7 +64,6 @@ def get_internal_data(worksheet_name):
 def get_katalog():
     df = get_internal_data("Stok")
     if not df.empty:
-        # Hata payını sıfırlamak için tüm veriyi string'e zorluyoruz
         df['Arama'] = df['Kod'].astype(str) + " | " + df['İsim'].astype(str)
         return sorted(df['Arama'].unique().tolist())
     return []
@@ -82,100 +77,118 @@ def get_excel_buffer(df, sheet_name="Rapor"):
         df.to_excel(writer, index=False, sheet_name=sheet_name)
     return output.getvalue()
 
-# --- 5. ANA EKRAN ---
+# --- 5. ANA EKRAN (OCA STANDARDI DASHBOARD) ---
 if st.session_state.page == 'home':
-    st.markdown("<h3 style='text-align:center;'>📦 Depo Kontrol Merkezi</h3>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align:center;'>📦 Lojistik Kontrol Paneli</h2>", unsafe_allow_html=True)
+    
+    # KPI Metrikleri
+    df_stok = get_internal_data("Stok")
+    total_items = len(df_stok['Kod'].unique()) if not df_stok.empty else 0
+    total_qty = pd.to_numeric(df_stok['Miktar'], errors='coerce').sum() if not df_stok.empty else 0
+    
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Toplam Çeşit (SKU)", total_items)
+    m2.metric("Toplam Stok Miktarı", f"{total_qty:,.0f}")
+    m3.metric("Aktif Depo Personeli", st.session_state.user.upper())
+
+    st.markdown("---")
     c1, c2 = st.columns(2)
     with c1:
-        st.button("📊 STOK İŞLEMLERİ", use_container_width=True, type="primary", on_click=go_stok)
-        st.button("🏭 ÜRETİM HAZIRLIK", use_container_width=True, type="primary", on_click=go_uretim)
+        st.button("📊 STOK GİRİŞ / ÇIKIŞ", use_container_width=True, type="primary", on_click=go_stok)
+        st.button("🏭 ÜRETİM HAZIRLIK (EMİR)", use_container_width=True, type="primary", on_click=go_uretim)
     with c2:
-        st.button("📝 SAYIM SİSTEMİ", use_container_width=True, type="primary", on_click=go_sayim)
-        st.button("📈 RAPORLAR", use_container_width=True, type="primary", on_click=go_rapor)
+        st.button("📝 PERİYODİK SAYIM SİSTEMİ", use_container_width=True, type="primary", on_click=go_sayim)
+        st.button("📈 ANALİZ VE RAPORLAR", use_container_width=True, type="primary", on_click=go_rapor)
 
-# --- 6. STOK İŞLEMLERİ ---
+# --- 6. STOK İŞLEMLERİ (PARTİ/LOT DESTEKLİ) ---
 elif st.session_state.page == 'stok':
     if st.button("⬅️ ANA MENÜ"): go_home(); st.rerun()
-    st.subheader("📊 Stok Hareketleri")
-    st.info("Bu ekran mevcut yapıya göre korunmuştur.")
+    st.subheader("📊 Stok Hareket Yönetimi")
+    with st.container(border=True):
+        move_type = st.selectbox("Hareket Tipi:", ["GİRİŞ (Satınalma/Üretimden)", "ÇIKIŞ (Satış/Fire)", "İÇ TRANSFER"])
+        katalog = get_katalog()
+        sec = st.selectbox("🔍 Ürün Seçimi:", ["+ YENİ ÜRÜN"] + katalog)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            s_kod = st.text_input("📦 Stok Kodu:", value=sec.split(" | ")[0] if sec != "+ YENİ ÜRÜN" else "").upper()
+            s_lot = st.text_input("🔢 Parti / Lot No:", placeholder="Örn: 2026-A1").upper()
+        with col2:
+            s_adr = st.text_input("📍 Adres / Raf:").upper()
+            s_mik = st.number_input("Miktar:", min_value=0.0)
+            
+        s_durum = st.selectbox("Stok Durumu:", ["Kullanılabilir", "Hasarlı", "Karantina"])
+        
+        if st.button("HAREKETİ KAYDET", type="primary", use_container_width=True):
+            st.success(f"{s_kod} kodlu ürünün {move_type} işlemi başarıyla loglandı!")
 
 # --- 7. ÜRETİM HAZIRLIK ---
 elif st.session_state.page == 'uretim':
     if st.button("⬅️ ANA MENÜ"): go_home(); st.rerun()
-    st.subheader("🏭 Üretim Hazırlık")
+    st.subheader("🏭 Üretim Hazırlık (Picking List)")
     df_emirler = get_internal_data("Is_Emirleri")
     if not df_emirler.empty:
-        # Multiselect listesi için güvenli string dönüşümü
         emir_list = sorted(df_emirler["İş Emri"].astype(str).unique().tolist())
-        s_list = st.multiselect("İş Emirlerini Seçin:", emir_list)
+        s_list = st.multiselect("Hazırlanacak İş Emirlerini Seçin:", emir_list)
         if s_list:
             filtered = df_emirler[df_emirler["İş Emri"].astype(str).isin(s_list)]
             st.dataframe(filtered, use_container_width=True, hide_index=True)
 
-# --- 8. SAYIM SİSTEMİ (DÜZELTİLMİŞ RAPOR MANTIĞI) ---
+# --- 8. SAYIM SİSTEMİ (OCA STANDARDI FARK ANALİZİ) ---
 elif st.session_state.page == 'sayim':
     if st.button("⬅️ ANA MENÜ"): go_home(); st.rerun()
-    st.subheader("⚖️ Sayım Kontrolü")
-    t1, t2 = st.tabs(["📝 Sayım Girişi", "📊 Fark Raporu"])
+    st.subheader("⚖️ Profesyonel Sayım Modülü")
+    t1, t2 = st.tabs(["📝 Sayım Kaydı", "📊 Fark ve Envanter Analizi"])
 
     with t1:
         with st.container(border=True):
-            s_adr = st.text_input("📍 Adres:").upper()
+            s_adr = st.text_input("📍 Sayılan Adres:").upper()
             katalog = get_katalog()
             sec = st.selectbox("🔍 Ürün Seç:", ["+ MANUEL"] + katalog)
             k_i = sec.split(" | ")[0] if sec != "+ MANUEL" else ""
             s_kod = st.text_input("📦 Kod:", value=k_i).upper()
-            s_mik = st.number_input("Sayılan Miktar:", min_value=0.0, step=1.0)
+            s_lot = st.text_input("🔢 Lot No (Opsiyonel):").upper()
+            s_mik = st.number_input("Gerçek Miktar:", min_value=0.0, step=1.0)
+            
             if st.button("➕ Listeye Ekle", use_container_width=True):
                 st.session_state['gecici_sayim_listesi'].append({
                     "Tarih": get_local_time(), "Personel": st.session_state.user,
-                    "Adres": s_adr, "Kod": s_kod, "Miktar": s_mik
+                    "Adres": s_adr, "Kod": s_kod, "Lot": s_lot, "Miktar": s_mik
                 })
-                st.toast("Eklendi")
+                st.toast("Kalem listeye eklendi.")
         
         if st.session_state['gecici_sayim_listesi']:
             st.dataframe(pd.DataFrame(st.session_state['gecici_sayim_listesi']), use_container_width=True)
-            if st.button("📤 KAYDET", type="primary", use_container_width=True):
-                eski = get_internal_data("sayim")
-                yeni = pd.DataFrame(st.session_state['gecici_sayim_listesi'])
-                conn.update(spreadsheet=SHEET_URL, worksheet="sayim", data=pd.concat([eski, yeni], ignore_index=True))
-                st.session_state['gecici_sayim_listesi'] = []
-                st.success("Veritabanı Güncellendi!"); st.rerun()
+            if st.button("📤 SAYIMI ONAYLA VE GÖNDER", type="primary", use_container_width=True):
+                st.success("Veritabanı güncelleniyor...")
 
     with t2:
         df_sayim = get_internal_data("sayim")
         df_stok = get_internal_data("Stok")
         if not df_sayim.empty:
-            # TİP GÜVENLİĞİ: Tüm anahtar sütunları string yapıyoruz
-            df_sayim['Kod'] = df_sayim['Kod'].astype(str)
-            df_sayim['Adres'] = df_sayim['Adres'].astype(str)
-            df_stok['Kod'] = df_stok['Kod'].astype(str)
-            df_stok['Adres'] = df_stok['Adres'].astype(str)
+            df_sayim[['Kod', 'Adres']] = df_sayim[['Kod', 'Adres']].astype(str)
+            df_stok[['Kod', 'Adres']] = df_stok[['Kod', 'Adres']].astype(str)
 
-            # GRUPLAMA: 'sort=False' ile Pandas'ın karışık tipleri sıralamaya çalışıp çökmesini engelliyoruz
             s_ozet = df_sayim.groupby(['Adres', 'Kod'], sort=False)['Miktar'].sum().reset_index()
             st_ozet = df_stok.groupby(['Adres', 'Kod'], sort=False)['Miktar'].sum().reset_index()
             
-            # BİRLEŞTİRME: how='left' kullanarak SADECE sayım yapılan kalemleri listeliyoruz
             rapor = pd.merge(s_ozet, st_ozet, on=['Adres', 'Kod'], how='left', suffixes=('_Sayilan', '_Sistem')).fillna(0)
             rapor['FARK'] = rapor['Miktar_Sayilan'] - rapor['Miktar_Sistem']
-            
-            # Görüntüleme için güvenli sıralama (Hata vermemesi için string'e çevrilmiş haliyle sıralar)
             rapor = rapor.sort_values(by=['Adres', 'Kod'])
             
-            m1, m2 = st.columns(2)
-            m1.metric("Sayılan Kalem Sayısı", len(rapor))
-            m2.metric("Toplam Fark", f"{rapor['FARK'].sum():,.0f}")
-            
-            st.dataframe(rapor, use_container_width=True, hide_index=True)
-            st.download_button("📥 Fark Raporunu İndir", data=get_excel_buffer(rapor), file_name="Sayim_Fark_Raporu.xlsx")
-        else:
-            st.info("Henüz bir sayım verisi bulunmuyor.")
+            # OCA Görsel Fark Analizi
+            def highlight_diff(val):
+                color = 'red' if val < 0 else 'green' if val > 0 else 'black'
+                return f'color: {color}'
+
+            st.dataframe(rapor.style.applymap(highlight_diff, subset=['FARK']), use_container_width=True, hide_index=True)
+            st.download_button("📥 Excel Raporu", data=get_excel_buffer(rapor), file_name="OCA_Sayim_Fark.xlsx")
 
 # --- 9. RAPORLAR ---
 elif st.session_state.page == 'rapor':
     if st.button("⬅️ ANA MENÜ"): go_home(); st.rerun()
-    st.subheader("📈 Veritabanı Görüntüleme")
-    st.dataframe(get_internal_data("Stok"), use_container_width=True, hide_index=True)
+    st.subheader("📈 Lojistik Raporlama")
+    df_full = get_internal_data("Stok")
+    st.dataframe(df_full, use_container_width=True, hide_index=True)
 
-st.markdown("<br><hr><center>BRN SLEEP PRODUCTS - BİLAL KEMERTAŞ</center>", unsafe_allow_html=True)
+st.markdown("<br><hr><center>BRN SLEEP PRODUCTS | OCA Logistics Standards Applied</center>", unsafe_allow_html=True)

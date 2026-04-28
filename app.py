@@ -61,7 +61,6 @@ SHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
 def get_internal_data(worksheet_name):
     try:
         df = conn.read(spreadsheet=SHEET_URL, worksheet=worksheet_name, ttl=0)
-        # ZIRH: Boş hücreleri tire yapar, böylece sıralama çökmeleri engellenir.
         df = df.fillna("-")
         return df
     except:
@@ -86,6 +85,11 @@ def get_excel_buffer(df, sheet_name="Rapor"):
 # --- 5. ANA EKRAN ---
 if st.session_state.page == 'home':
     st.markdown("<h3 style='text-align:center;'>📦 Depo Kontrol Merkezi</h3>", unsafe_allow_html=True)
+    df_ana = get_internal_data("Stok")
+    m1, m2 = st.columns(2)
+    m1.metric("SKU Çeşitliliği", len(df_ana['Kod'].unique()) if not df_ana.empty else 0)
+    m2.metric("Toplam Stok", f"{pd.to_numeric(df_ana['Miktar'], errors='coerce').sum() if not df_ana.empty else 0:,.0f}")
+    st.markdown("---")
     c1, c2 = st.columns(2)
     with c1:
         st.button("📊 STOK İŞLEMLERİ", use_container_width=True, type="primary", on_click=go_stok)
@@ -102,11 +106,11 @@ elif st.session_state.page == 'stok':
         move_type = st.selectbox("İşlem Tipi:", ["GİRİŞ", "ÇIKIŞ", "İÇ TRANSFER"])
         katalog = get_katalog()
         sec = st.selectbox("🔍 Ürün Seç:", ["+ MANUEL GİRİŞ"] + katalog)
-        col1, col2 = st.columns(2)
-        with col1:
+        c1, c2 = st.columns(2)
+        with c1:
             s_kod = st.text_input("📦 Stok Kodu:", value=sec.split(" | ")[0] if sec != "+ MANUEL GİRİŞ" else "").upper()
             s_lot = st.text_input("🔢 Parti/Lot No:").upper()
-        with col2:
+        with c2:
             s_adr = st.text_input("📍 Adres:").upper()
             s_mik = st.number_input("Miktar:", min_value=0.0)
         s_dur = st.selectbox("Durum:", ["Kullanılabilir", "Hasarlı", "Karantina"])
@@ -126,7 +130,7 @@ elif st.session_state.page == 'uretim':
             st.markdown("#### 📝 İş Emri Detay Tablosu")
             st.dataframe(filtered, use_container_width=True, hide_index=True)
 
-# --- 8. SAYIM SİSTEMİ (SİLME BUTONU, DURUM LİSTESİ VE METRİKLER KORUNDU) ---
+# --- 8. SAYIM SİSTEMİ (ONAYLI SİLME SİSTEMİ EKLENDİ) ---
 elif st.session_state.page == 'sayim':
     if st.button("⬅️ ANA MENÜ"): go_home(); st.rerun()
     st.subheader("⚖️ Sayım Kontrolü")
@@ -140,7 +144,6 @@ elif st.session_state.page == 'sayim':
             k_i = sec.split(" | ")[0] if sec != "+ MANUEL" else ""
             s_kod = st.text_input("📦 Kod:", value=k_i).upper()
             s_mik = st.number_input("Gerçek Miktar:", min_value=0.0, step=1.0)
-            # 4. Eksik: Stok durumu açılır listesi geri geldi
             s_durum = st.selectbox("🛠️ Stok Durumu Seç:", ["Kullanılabilir", "Hasarlı", "İncelemede"])
             
             if st.button("➕ Listeye Ekle", use_container_width=True):
@@ -152,13 +155,25 @@ elif st.session_state.page == 'sayim':
         
         if st.session_state['gecici_sayim_listesi']:
             st.markdown("### 📥 Onay Bekleyen Liste")
-            # 5. Eksik: Hatalı girişleri silmek için butonlar geri geldi
+            # --- ONAYLI SİLME MANTIĞI ---
             for idx, item in enumerate(st.session_state['gecici_sayim_listesi']):
                 cols = st.columns([3, 1])
                 cols[0].write(f"📍 {item['Adres']} | 📦 {item['Kod']} | 🔢 {item['Miktar']} ({item['Durum']})")
-                if cols[1].button("🗑️", key=f"del_{idx}"):
-                    st.session_state['gecici_sayim_listesi'].pop(idx)
-                    st.rerun()
+                
+                # Eğer bu satır için silmeye basıldıysa onay butonlarını göster
+                if st.session_state.delete_confirm == idx:
+                    c_del, c_esc = cols[1].columns(2)
+                    if c_del.button("✅", key=f"conf_{idx}"):
+                        st.session_state['gecici_sayim_listesi'].pop(idx)
+                        st.session_state.delete_confirm = None
+                        st.rerun()
+                    if c_esc.button("❌", key=f"esc_{idx}"):
+                        st.session_state.delete_confirm = None
+                        st.rerun()
+                else:
+                    if cols[1].button("🗑️", key=f"del_{idx}"):
+                        st.session_state.delete_confirm = idx
+                        st.rerun()
             
             if st.button("📤 VERİTABANINA GÖNDER", type="primary", use_container_width=True):
                 eski = get_internal_data("sayim")
@@ -173,15 +188,12 @@ elif st.session_state.page == 'sayim':
         if not df_sayim.empty:
             df_sayim[['Kod', 'Adres']] = df_sayim[['Kod', 'Adres']].astype(str)
             df_stok[['Kod', 'Adres']] = df_stok[['Kod', 'Adres']].astype(str)
-            # Gruplama hatası almamak için sort=False kullanıyoruz
             s_ozet = df_sayim.groupby(['Adres', 'Kod'], sort=False)['Miktar'].sum().reset_index()
             st_ozet = df_stok.groupby(['Adres', 'Kod'], sort=False)['Miktar'].sum().reset_index()
-            # Senin rapor mantığın: Sadece sayılanları gösteren how='left'
             rapor = pd.merge(s_ozet, st_ozet, on=['Adres', 'Kod'], how='left', suffixes=('_Sayilan', '_Sistem')).fillna(0)
             rapor['FARK'] = rapor['Miktar_Sayilan'] - rapor['Miktar_Sistem']
             rapor = rapor.sort_values(by=['Adres', 'Kod'])
             
-            # 3. Eksik: Toplam sayılan ve toplam fark metrikleri geri geldi
             m1, m2 = st.columns(2)
             m1.metric("Toplam Sayılan Adet", f"{rapor['Miktar_Sayilan'].sum():,.0f}")
             m2.metric("Toplam Envanter Farkı", f"{rapor['FARK'].sum():,.0f}")
@@ -191,9 +203,9 @@ elif st.session_state.page == 'sayim':
 
             st.dataframe(rapor.style.map(color_diff, subset=['FARK']), use_container_width=True, hide_index=True)
             st.download_button("📥 Excel İndir", data=get_excel_buffer(rapor), file_name="Sayim_Raporu.xlsx")
-        else: st.info("Sayım verisi bekleniyor...")
+        else: st.info("Sayım verisi yok.")
 
-# --- 9. RAPORLAR (ARŞİV FİLTRELERİ KORUNDU) ---
+# --- 9. RAPORLAR VE ARŞİV (TÜM FİLTRELER VE SEKMELER KORUNDU) ---
 elif st.session_state.page == 'rapor':
     if st.button("⬅️ ANA MENÜ"): go_home(); st.rerun()
     st.subheader("📈 Raporlar ve Hareket Arşivi")
@@ -202,13 +214,11 @@ elif st.session_state.page == 'rapor':
     with rt1:
         st.dataframe(get_internal_data("Stok"), use_container_width=True, hide_index=True)
     with rt2:
-        # 1. Eksik: İş emri bazlı hazırlık özeti ve toplamları geri geldi
         df_h = get_internal_data("Is_Emirleri")
         if not df_h.empty:
             sum_h = df_h.groupby('İş Emri', sort=False)[['İhtiyaç Miktarı', 'Hazırlanan Adet']].sum().reset_index()
             st.dataframe(sum_h, use_container_width=True, hide_index=True)
     with rt3:
-        # 2. Eksik: Hareket Arşivi Tarih, Kod ve İsim filtreleri geri geldi
         hareketler = get_internal_data("Sayfa1")
         if not hareketler.empty:
             f1, f2, f3 = st.columns(3)

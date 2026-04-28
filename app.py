@@ -132,7 +132,7 @@ elif st.session_state.page == 'stok':
         if st.button("HAREKETİ KAYDET", use_container_width=True, type="primary"):
             st.success("Kayıt Başarılı!")
 
-# --- 7. ÜRETİM HAZIRLIK (FİLTRELİ VE % HESAPLAMALI) ---
+# --- 7. ÜRETİM HAZIRLIK (ÇİFT FİLTRE: İŞ EMRİ + MAMÜL KODU) ---
 elif st.session_state.page == 'uretim':
     if st.button("⬅️ ANA MENÜ"): go_home(); st.rerun()
     st.subheader("🏭 Üretim Hazırlık")
@@ -140,15 +140,23 @@ elif st.session_state.page == 'uretim':
     df_stok_ana = get_internal_data("Stok")
     
     if not df_emirler.empty:
-        # FİLTRE GERİ GELDİ: Personel önce iş emrini seçmek zorunda
+        # FİLTRE 1: İş Emri Seçimi
         emir_list = sorted(df_emirler["İş Emri"].astype(str).unique().tolist())
-        s_list = st.multiselect("📋 Hazırlanacak İş Emirlerini Seçin:", emir_list)
+        s_list = st.multiselect("📋 İş Emirlerini Seçin:", emir_list)
         
         if s_list:
-            # Sadece seçilen iş emirlerini filtrele
-            filtered = df_emirler[df_emirler["İş Emri"].astype(str).isin(s_list)].copy()
+            temp_df = df_emirler[df_emirler["İş Emri"].astype(str).isin(s_list)]
             
-            # Tamamlanma Yüzdesi ve Detaylar
+            # FİLTRE 2: Mamül Kodu Seçimi (Sadece seçilen iş emrindeki mamüller)
+            mamul_list = sorted(temp_df["Mamül Kodu"].astype(str).unique().tolist())
+            m_secim = st.multiselect("🏗️ Mamül Kodu Filtrele:", mamul_list)
+            
+            # Filtreleme Uygula
+            filtered = temp_df.copy()
+            if m_secim:
+                filtered = filtered[filtered["Mamül Kodu"].astype(str).isin(m_secim)]
+            
+            # Tamamlanma ve Adres Hesaplamaları
             filtered['İhtiyaç Miktarı'] = pd.to_numeric(filtered['İhtiyaç Miktarı'], errors='coerce').fillna(0)
             filtered['Hazırlanan Adet'] = pd.to_numeric(filtered['Hazırlanan Adet'], errors='coerce').fillna(0)
             filtered['Doluluk %'] = (filtered['Hazırlanan Adet'] / filtered['İhtiyaç Miktarı'] * 100).round(1).fillna(0)
@@ -159,10 +167,10 @@ elif st.session_state.page == 'uretim':
             
             filtered["Alınacak Adres"] = filtered["Stok Kodu"].apply(get_best_adr)
             
-            st.markdown(f"#### 📝 {', '.join(s_list)} Nolu İş Emri Kalemleri")
-            ed = st.data_editor(filtered, disabled=["İş Emri", "Stok Kodu", "Stok Adı", "İhtiyaç Miktarı", "Birim", "Doluluk %", "Alınacak Adres"], hide_index=True, use_container_width=True)
+            st.markdown(f"#### 📝 Filtreli Hazırlık Listesi")
+            ed = st.data_editor(filtered, disabled=["İş Emri", "Mamül Kodu", "Stok Kodu", "Stok Adı", "İhtiyaç Miktarı", "Birim", "Doluluk %", "Alınacak Adres"], hide_index=True, use_container_width=True)
             
-            if st.button("✅ SEÇİLİ KALEMLERİ ONAYLA", use_container_width=True, type="primary"):
+            if st.button("✅ HAZIRLIĞI ONAYLA VE KAYDET", use_container_width=True, type="primary"):
                 fresh_stok = conn.read(spreadsheet=SHEET_URL, worksheet="Stok", ttl=0)
                 fresh_emirler = conn.read(spreadsheet=SHEET_URL, worksheet="Is_Emirleri", ttl=0)
                 
@@ -173,18 +181,16 @@ elif st.session_state.page == 'uretim':
                         if mask.any():
                             fresh_stok.loc[mask, 'Miktar'] = pd.to_numeric(fresh_stok.loc[mask, 'Miktar'], errors='coerce').fillna(0) - h_adet
                         
-                        log_movement(f"{row['İş Emri']} ÇIKIŞ", row["Alınacak Adres"], row["Stok Kodu"], row["Stok Adı"], h_adet)
+                        log_movement(f"{row['İş Emri']} - {row['Mamül Kodu']} ÇIKIŞ", row["Alınacak Adres"], row["Stok Kodu"], row["Stok Adı"], h_adet)
                         
                         mask_e = (fresh_emirler["İş Emri"].astype(str) == str(row['İş Emri'])) & (fresh_emirler["Stok Kodu"].astype(str) == str(row["Stok Kodu"]))
                         fresh_emirler.loc[mask_e, "Hazırlanan Adet"] = h_adet
 
                 conn.update(spreadsheet=SHEET_URL, worksheet="Stok", data=fresh_stok[fresh_stok['Miktar'] > 0])
                 conn.update(spreadsheet=SHEET_URL, worksheet="Is_Emirleri", data=fresh_emirler)
-                st.success("Hazırlık Onaylandı!"); st.rerun()
-        else:
-            st.info("Lütfen listeden en az bir İş Emri seçin.")
+                st.success("İşlemler Kaydedildi!"); st.rerun()
 
-# --- 8. SAYIM SİSTEMİ (METRİKLER VE ONAYLI SİLME) ---
+# --- 8. SAYIM SİSTEMİ (ONAYLI SİLME VE METRİKLER) ---
 elif st.session_state.page == 'sayim':
     if st.button("⬅️ ANA MENÜ"): go_home(); st.rerun()
     st.subheader("⚖️ Sayım Kontrolü")
@@ -245,7 +251,7 @@ elif st.session_state.page == 'sayim':
             def color_diff(val): return f'color: {"red" if val < 0 else "green" if val > 0 else "black"}; font-weight: bold'
             st.dataframe(rapor.style.map(color_diff, subset=['FARK']), use_container_width=True, hide_index=True)
 
-# --- 9. RAPORLAR VE ARŞİV (YÜZDELER VE DETAYLAR) ---
+# --- 9. RAPORLAR VE ARŞİV (HAZIRLIK RAPORUNDA ÇİFT FİLTRE) ---
 elif st.session_state.page == 'rapor':
     if st.button("⬅️ ANA MENÜ"): go_home(); st.rerun()
     st.subheader("📈 Raporlar ve Arşiv")
@@ -256,17 +262,26 @@ elif st.session_state.page == 'rapor':
     with rt2:
         df_h = get_internal_data("Is_Emirleri").copy()
         if not df_h.empty:
-            df_h['İhtiyaç Miktarı'] = pd.to_numeric(df_h['İhtiyaç Miktarı'], errors='coerce').fillna(0)
-            df_h['Hazırlanan Adet'] = pd.to_numeric(df_h['Hazırlanan Adet'], errors='coerce').fillna(0)
+            # RAPORDA ÇİFT FİLTRE SİSTEMİ
+            r_emir_list = sorted(df_h["İş Emri"].astype(str).unique().tolist())
+            r_emir = st.multiselect("📋 İş Emri Filtrele:", r_emir_list, key="r_emir")
             
+            r_df = df_h.copy()
+            if r_emir:
+                r_df = r_df[r_df["İş Emri"].astype(str).isin(r_emir)]
+                r_mamul_list = sorted(r_df["Mamül Kodu"].astype(str).unique().tolist())
+                r_mamul = st.multiselect("🏗️ Mamül Kodu Filtrele:", r_mamul_list, key="r_mamul")
+                if r_mamul:
+                    r_df = r_df[r_df["Mamül Kodu"].astype(str).isin(r_mamul)]
+
             st.markdown("#### 📊 İş Emri Bazlı Özet")
-            sum_h = df_h.groupby(['İş Emri'], sort=False).agg({'İhtiyaç Miktarı': 'sum', 'Hazırlanan Adet': 'sum'}).reset_index()
+            sum_h = r_df.groupby(['İş Emri'], sort=False).agg({'İhtiyaç Miktarı': 'sum', 'Hazırlanan Adet': 'sum'}).reset_index()
             sum_h['Tamamlanma %'] = (sum_h['Hazırlanan Adet'] / sum_h['İhtiyaç Miktarı'] * 100).round(1).fillna(0)
             st.dataframe(sum_h, use_container_width=True, hide_index=True)
             
-            st.markdown("#### 🔍 Tüm Kalem Detay Listesi")
-            df_h['Tamamlanma %'] = (df_h['Hazırlanan Adet'] / df_h['İhtiyaç Miktarı'] * 100).round(1).fillna(0)
-            st.dataframe(df_h, use_container_width=True, hide_index=True)
+            st.markdown("#### 🔍 Kalem Detay Listesi")
+            r_df['Tamamlanma %'] = (pd.to_numeric(r_df['Hazırlanan Adet'], errors='coerce').fillna(0) / pd.to_numeric(r_df['İhtiyaç Miktarı'], errors='coerce').fillna(0) * 100).round(1).fillna(0)
+            st.dataframe(r_df, use_container_width=True, hide_index=True)
             
     with rt3:
         hareketler = get_internal_data("Sayfa1")

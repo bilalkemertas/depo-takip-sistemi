@@ -55,14 +55,17 @@ SHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
 def get_internal_data(worksheet_name):
     try:
         df = conn.read(spreadsheet=SHEET_URL, worksheet=worksheet_name, ttl=0)
+        # Sütun isimlerini temizle
+        df.columns = df.columns.str.strip()
         return df.fillna("-")
     except: return pd.DataFrame()
 
 def get_katalog():
+    # Urun_Listesi sekmesine bakıyoruz
     df = get_internal_data("Urun_Listesi")
-    # Sütun isimlerini senin verdiğin listeye göre (Malzeme Kodu, Malzeme Adı) sabitledim
-    if not df.empty and 'Malzeme Kodu' in df.columns and 'Malzeme Adı' in df.columns:
-        df['Arama'] = df['Malzeme Kodu'].astype(str) + " | " + df['Malzeme Adı'].astype(str)
+    # Sizin belirttiğiniz başlıklar: Kod, İsim
+    if not df.empty and 'Kod' in df.columns and 'İsim' in df.columns:
+        df['Arama'] = df['Kod'].astype(str) + " | " + df['İsim'].astype(str)
         return sorted(df['Arama'].unique().tolist())
     return []
 
@@ -85,9 +88,9 @@ st.divider()
 if st.session_state.current_screen == "MAIN":
     df_ana = get_internal_data("Stok")
     if not df_ana.empty:
-        # Metrikleri manuel hesaplatıyoruz (Hata almamak için sütun bazlı)
+        # Metrikler Sizin Başlıklarınıza Göre (Adres Kod İsim Birim Miktar)
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("SKU Çeşitliliği", len(df_ana['Malzeme Kodu'].unique()) if 'Malzeme Kodu' in df_ana.columns else 0)
+        m1.metric("SKU Çeşitliliği", len(df_ana['Kod'].unique()) if 'Kod' in df_ana.columns else 0)
         m2.metric("Toplam Envanter", f"{pd.to_numeric(df_ana['Miktar'], errors='coerce').sum():,.0f}" if 'Miktar' in df_ana.columns else 0)
         m3.metric("Aktif Raf Adresi", len(df_ana['Adres'].unique()) if 'Adres' in df_ana.columns else 0)
         m4.metric("Karantina Stok", "142")
@@ -123,7 +126,7 @@ elif st.session_state.current_screen == "URETIM":
     st.title("🏭 Üretim Hazırlık")
     df_e = get_internal_data("Is_Emirleri")
     if not df_e.empty:
-        sel = st.multiselect("📋 Emir Seç:", sorted(df_e["İş Emri"].unique().tolist()))
+        sel = st.multiselect("📋 Emir Seç:", sorted(df_e["İş Emri"].unique().tolist()) if 'İş Emri' in df_e.columns else [])
         if sel:
             f_df = df_e[df_e["İş Emri"].astype(str).isin(sel)]
             st.data_editor(f_df, hide_index=True, use_container_width=True)
@@ -141,7 +144,7 @@ elif st.session_state.current_screen == "SAYIM_GIRIS":
     for idx, item in enumerate(st.session_state['gecici_sayim_listesi']):
         st.write(f"📍 {item['Adres']} | 📦 {item['Kod']} | 🔢 {item['Miktar']}")
 
-# --- HATANIN ÇÖZÜLDÜĞÜ KRİTİK EKRAN ---
+# --- HATANIN ÇÖZÜLDÜĞÜ KRİTİK EKRAN (SAYIM FARK) ---
 elif st.session_state.current_screen == "SAYIM_FARK":
     if st.button("⬅️ ANA MENÜ"): set_screen("MAIN")
     st.title("⚖️ Fark Raporu")
@@ -149,25 +152,28 @@ elif st.session_state.current_screen == "SAYIM_FARK":
     df_stk = get_internal_data("Stok")
     
     if not df_say.empty and not df_stk.empty:
-        # Sütun isimlerini senin tabloya göre manuel sabitleyerek ValueError'u engelledik
-        s_g = df_say.groupby(['Adres', 'Kod'])['Miktar'].sum().reset_index()
-        # Stok tablosunda senin verdiğin sütun isimlerini kullanıyoruz
-        t_g = df_stk.groupby(['Adres', 'Malzeme Kodu', 'Malzeme Adı'])['Miktar'].sum().reset_index()
-        
-        # Merge işlemi için sütun isimlerini hizalıyoruz
-        t_g.columns = ['Adres', 'Kod', 'İsim', 'Sistem']
-        s_g.columns = ['Adres', 'Kod', 'Sayilan']
-        
-        rapor = pd.merge(s_g, t_g, on=['Adres', 'Kod'], how='left').fillna(0)
-        rapor['FARK'] = rapor['Sayilan'] - rapor['Sistem']
-        
-        rf1, rf2 = st.columns(2)
-        fa = rf1.text_input("📍 Adres Filtre:").upper()
-        fk = rf2.text_input("📦 Kod Filtre:").upper()
-        if fa: rapor = rapor[rapor['Adres'].astype(str).str.contains(fa)]
-        if fk: rapor = rapor[rapor['Kod'].astype(str).str.contains(fk)]
-        
-        st.dataframe(rapor, use_container_width=True, hide_index=True)
+        # Sütun isimlerini Sizin Belirttiğiniz Başlıklara Göre Sabitledik
+        try:
+            s_g = df_say.groupby(['Adres', 'Kod'])['Miktar'].sum().reset_index()
+            # Sizin Stok Başlıklarınız: Adres, Kod, İsim
+            t_g = df_stk.groupby(['Adres', 'Kod', 'İsim'])['Miktar'].sum().reset_index()
+            
+            t_g.columns = ['Adres', 'Kod', 'İsim', 'Sistem']
+            s_g.columns = ['Adres', 'Kod', 'Sayilan']
+            
+            rapor = pd.merge(s_g, t_g, on=['Adres', 'Kod'], how='left').fillna(0)
+            rapor['FARK'] = rapor['Sayilan'] - rapor['Sistem']
+            
+            rf1, rf2 = st.columns(2)
+            fa = rf1.text_input("📍 Adres Filtre:").upper()
+            fk = rf2.text_input("📦 Kod Filtre:").upper()
+            if fa: rapor = rapor[rapor['Adres'].astype(str).str.contains(fa)]
+            if fk: rapor = rapor[rapor['Kod'].astype(str).str.contains(fk)]
+            
+            def color_fark(val): return f'color: {"red" if val < 0 else "green" if val > 0 else "black"}; font-weight: bold'
+            st.dataframe(rapor.style.map(color_fark, subset=['FARK']), use_container_width=True, hide_index=True)
+        except Exception as e:
+            st.error(f"Sütun Uyumsuzluğu: Lütfen Stok sayfasında 'Adres', 'Kod', 'İsim' ve 'Miktar' başlıklarının doğruluğunu kontrol edin.")
 
 elif st.session_state.current_screen == "ARSIV":
     if st.button("⬅️ ANA MENÜ"): set_screen("MAIN")
@@ -177,4 +183,4 @@ elif st.session_state.current_screen == "OCA":
     if st.button("⬅️ ANA MENÜ"): set_screen("MAIN")
     st.success("✅ S-Shape Optimization Active")
 
-st.markdown("<br><hr><center><b>BRN SLEEP PRODUCTS - BİLAL KEMERTAŞ</b></center>", unsafe_allow_html=True)
+st.markdown("<br><hr><center><b>BRN SLEEP PRODUCTS - BİLAL KEMERTAŞ</b><br>2026</center>", unsafe_allow_html=True)

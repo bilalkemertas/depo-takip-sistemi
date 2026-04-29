@@ -297,7 +297,7 @@ elif st.session_state.current_screen == "SAYIM_FARK":
         fi = rf3.text_input("📝 isim Filtre:").upper()
         if fa: rapor = rapor[rapor['Adres'].astype(str).str.contains(fa)]
         if fk: rapor = rapor[rapor['Kod'].astype(str).str.contains(fk)]
-        if fi: rapor = rapor[rapor['isim'].astype(str).str.contains(fi, case=False)]
+        if fi: rapor = rapor[rapor['İsim'].astype(str).str.contains(fi, case=False)]
         st.dataframe(rapor, use_container_width=True, hide_index=True)
 
 # --- 5.5 OCA MODÜLLERİ ---

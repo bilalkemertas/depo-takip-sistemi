@@ -289,7 +289,7 @@ elif st.session_state.current_screen == "SAYIM_FARK":
         rapor['FARK'] = rapor['Miktar_Sayılan'] - rapor['Miktar_Sistem']
         
         # Sütunların yerlerini sabitle
-        rapor = rapor[['Adres', 'Kod', 'isim', 'Miktar_Sayılan', 'Miktar_Sistem', 'FARK']]
+        rapor = rapor[['Adres', 'Kod', 'İsim', 'Miktar_Sayılan', 'Miktar_Sistem', 'FARK']]
         
         rf1, rf2, rf3 = st.columns(3)
         fa = rf1.text_input("📍 Adres Filtre:").upper()

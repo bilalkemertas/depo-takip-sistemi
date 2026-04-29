@@ -115,12 +115,16 @@ def get_internal_data(worksheet_name):
     try:
         df = conn.read(spreadsheet=SHEET_URL, worksheet=worksheet_name, ttl=0)
         df.columns = df.columns.str.strip()
+        # Kodları zorunlu metne çevirme garantisi
+        if 'Kod' in df.columns:
+            df['Kod'] = df['Kod'].astype(str).str.strip().replace(r'\.0$', '', regex=True)
         return df.fillna("-")
     except: return pd.DataFrame()
 
 def get_katalog():
-    df = get_internal_data("Stok")
-    if not df.empty:
+    # PATRON: Katalog artık sadece Stok'tan değil, doğrudan Ürün Listesi'nden besleniyor!
+    df = get_internal_data("Urun_Listesi")
+    if not df.empty and 'Kod' in df.columns and 'İsim' in df.columns:
         df['Arama'] = df['Kod'].astype(str) + " | " + df['İsim'].astype(str)
         return sorted(df['Arama'].unique().tolist())
     return []
@@ -185,7 +189,7 @@ if st.session_state.current_screen == "MAIN":
 # 5. ALT EKRANLAR
 # ==========================================
 
-# --- 5.1 STOK HAREKETLERİ (DİNAMİK ADRES ALANLARI) ---
+# --- 5.1 STOK HAREKETLERİ ---
 elif st.session_state.current_screen == "STOK":
     if st.button("⬅️ ANA MENÜYE DÖN"): set_screen("MAIN")
     st.title("📊 Malzeme Hareket Yönetimi")
@@ -268,36 +272,56 @@ elif st.session_state.current_screen == "SAYIM_GIRIS":
 elif st.session_state.current_screen == "SAYIM_FARK":
     if st.button("⬅️ ANA MENÜYE DÖN"): set_screen("MAIN")
     st.title("⚖️ Sayım Fark Raporu")
+    
     df_say = get_internal_data("sayim")
     df_stk = get_internal_data("Stok")
-    if not df_say.empty and not df_stk.empty:
+    df_urun = get_internal_data("Urun_Listesi")
+    
+    if not df_say.empty:
+        # 1. Eski sayım kayıtlarında 'Durum' sütunu yoksa hata vermesin diye boş atama yapıyoruz
+        if 'Durum' not in df_say.columns:
+            df_say['Durum'] = "Belirtilmemiş"
+            
+        # 2. Sayım tablosunu ANA TABLO olarak kabul edip grupluyoruz (Durum bilgisiyle birlikte)
+        df_say['Miktar'] = pd.to_numeric(df_say['Miktar'], errors='coerce').fillna(0)
+        s_g = df_say.groupby(['Adres', 'Kod', 'Durum'])['Miktar'].sum().reset_index()
+        s_g.rename(columns={'Miktar': 'Miktar_Sayılan'}, inplace=True)
         
-        # PATRON: HATA VEREN YERİ SADECE BURADA SÖZLÜK MANTIĞIYLA DÜZELTTİM
-        s_g = df_say.groupby(['Adres', 'Kod'])['Miktar'].sum().reset_index()
-        t_g = df_stk.groupby(['Adres', 'Kod'])['Miktar'].sum().reset_index()
+        # 3. Stok tablosunu adrese ve koda göre grupluyoruz (Yanına çekmek için)
+        if not df_stk.empty:
+            df_stk['Miktar'] = pd.to_numeric(df_stk['Miktar'], errors='coerce').fillna(0)
+            t_g = df_stk.groupby(['Adres', 'Kod'])['Miktar'].sum().reset_index()
+            t_g.rename(columns={'Miktar': 'Miktar_Sistem'}, inplace=True)
+        else:
+            t_g = pd.DataFrame(columns=['Adres', 'Kod', 'Miktar_Sistem'])
         
-        # Sütun kaymasını önlemek için Stok listesindeki İsimleri bir sözlüğe hapsediyoruz
-        isim_sozlugu = df_stk.drop_duplicates(subset=['Kod']).set_index('Kod')['İsim'].to_dict()
+        # 4. Ürün Listesi'nden taze ve kesin isim sözlüğünü oluşturuyoruz
+        isim_sozlugu = {}
+        if not df_urun.empty and 'Kod' in df_urun.columns and 'İsim' in df_urun.columns:
+            isim_sozlugu = df_urun.drop_duplicates(subset=['Kod']).set_index('Kod')['İsim'].to_dict()
         
-        # Önce sadece Miktarları birleştiriyoruz (Hatasız merge)
-        rapor = pd.merge(s_g, t_g, on=['Adres', 'Kod'], how='outer', suffixes=('_Sayılan', '_Sistem')).fillna(0)
+        # 5. BİRLEŞTİRME (Sadece Sayım listesindeki satırları merkeze alarak "LEFT JOIN" yapıyoruz)
+        rapor = pd.merge(s_g, t_g, on=['Adres', 'Kod'], how='left').fillna(0)
         
-        # Sonra leri Kod üzerinden güvenli bir şekilde çağırıyoruz
+        # 6. İsimleri güvenle atıyoruz
         rapor['İsim'] = rapor['Kod'].map(isim_sozlugu).fillna("TANIMSIZ")
         
-        # Farkı Hesapla
+        # 7. Fark hesaplama
         rapor['FARK'] = rapor['Miktar_Sayılan'] - rapor['Miktar_Sistem']
         
-        # Sütunların yerlerini sabitle
-        rapor = rapor[['Adres', 'Kod', 'İsim', 'Miktar_Sayılan', 'Miktar_Sistem', 'FARK']]
+        # 8. Sütunların yerlerini ve görünümlerini sabitleme (Durum dahil)
+        rapor = rapor[['Adres', 'Kod', 'İsim', 'Durum', 'Miktar_Sayılan', 'Miktar_Sistem', 'FARK']]
+        rapor.columns = ['📍 Adres', '📦 Kod', '📝 İsim', '🛠️ Durum', '🔢 Sayılan', '💻 Sistem', '⚖️ FARK']
         
         rf1, rf2, rf3 = st.columns(3)
         fa = rf1.text_input("📍 Adres Filtre:").upper()
         fk = rf2.text_input("📦 Kod Filtre:").upper()
         fi = rf3.text_input("📝 isim Filtre:").upper()
-        if fa: rapor = rapor[rapor['Adres'].astype(str).str.contains(fa)]
-        if fk: rapor = rapor[rapor['Kod'].astype(str).str.contains(fk)]
-        if fi: rapor = rapor[rapor['İsim'].astype(str).str.contains(fi, case=False)]
+        
+        if fa: rapor = rapor[rapor['📍 Adres'].astype(str).str.contains(fa)]
+        if fk: rapor = rapor[rapor['📦 Kod'].astype(str).str.contains(fk)]
+        if fi: rapor = rapor[rapor['📝 İsim'].astype(str).str.contains(fi, case=False)]
+        
         st.dataframe(rapor, use_container_width=True, hide_index=True)
 
 # --- 5.5 OCA MODÜLLERİ ---

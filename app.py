@@ -242,23 +242,59 @@ elif st.session_state.current_screen == "URETIM":
             st.data_editor(f_df, hide_index=True, use_container_width=True)
             if st.button("✅ LİSTEYİ ONAYLA"): st.success("Üretim onayı verildi!")
 
-# --- 5.3 SAYIM GİRİŞİ ---
+# --- 5.3 SAYIM GİRİŞİ (GÜVENLİK DUVARI VE SÜTUN ZIRHI EKLENDİ) ---
 elif st.session_state.current_screen == "SAYIM_GIRIS":
     if st.button("⬅️ ANA MENÜYE DÖN"): set_screen("MAIN")
     st.title("📝 Fiili Sayım Girişi")
     with st.container(border=True):
         c_adr = st.text_input("📍 Sayım Adresi:").upper()
         kat_sayim = get_katalog()
-        sec_sayim = st.selectbox("🔍 Ürün Seç (Katalogdan):", ["+ MANUEL GİRİŞ"] + kat_sayim)
-        c_kod = st.text_input("📦 Kod:", value=sec_sayim.split(" | ")[0] if sec_sayim != "+ MANUEL GİRİŞ" else "").upper()
+        sec_sayim = st.selectbox("🔍 Ürün Seç (Katalogdan):", ["+ BARKOD / MANUEL GİRİŞ"] + kat_sayim)
+        
+        c_kod_col, c_isim_col = st.columns(2)
+        with c_kod_col:
+            c_kod = st.text_input("📦 Kod:", value=sec_sayim.split(" | ")[0] if sec_sayim != "+ BARKOD / MANUEL GİRİŞ" else "").upper()
+        with c_isim_col:
+            default_isim = sec_sayim.split(" | ")[1] if sec_sayim != "+ BARKOD / MANUEL GİRİŞ" and len(sec_sayim.split(" | ")) > 1 else ""
+            c_isim = st.text_input("📝 Malzeme Adı (İsim):", value=default_isim).upper()
+            
         col_c1, col_c2 = st.columns(2)
         with col_c1:
             c_mik = st.number_input("Miktar:", min_value=0.0)
         with col_c2:
             c_durum = st.selectbox("🛠️ Stok Durumu Seç:", ["Kullanılabilir", "Hasarlı", "İncelemede", "Blokeli"])
+            
         if st.button("➕ GEÇİCİ LİSTEYE EKLE", use_container_width=True):
-            st.session_state['gecici_sayim_listesi'].append({"Adres": c_adr, "Kod": c_kod, "Miktar": c_mik, "Durum": c_durum})
-            st.rerun()
+            # 1. GÜVENLİK DUVARI: Sistemdeki geçerli kodların listesini oluştur
+            valid_codes = [k.split(" | ")[0].upper() for k in kat_sayim]
+            
+            if not c_kod:
+                st.warning("⚠️ Lütfen bir malzeme kodu giriniz!")
+            # 2. EĞER GİRİLEN KOD SİSTEMDE YOKSA RET VER!
+            elif c_kod not in valid_codes:
+                st.error(f"🛑 İŞLEM REDDEDİLDİ: '{c_kod}' kodlu ürün sistemde tanımlı değil! Blok firesi, kapak veya sisteme açılmamış ürünlerin sayımı yapılamaz.")
+            else:
+                # Barkod okutulup isim boş bırakılırsa diye güvenlik yedeği (Katalogdan doğru ismi bulur)
+                dogru_isim = c_isim
+                if sec_sayim == "+ BARKOD / MANUEL GİRİŞ":
+                    for k in kat_sayim:
+                        if k.split(" | ")[0].upper() == c_kod:
+                            dogru_isim = k.split(" | ")[1]
+                            break
+                
+                st.session_state['gecici_sayim_listesi'].append({
+                    "Tarih": get_local_time(), 
+                    "Adres": c_adr, 
+                    "Kod": c_kod, 
+                    "Miktar": c_mik,
+                    "Birim": "-", 
+                    "Personel": st.session_state.user, 
+                    "isim": dogru_isim, 
+                    "Durum": c_durum
+                })
+                st.success("✅ Listeye Eklendi")
+                st.rerun()
+                
     if st.session_state['gecici_sayim_listesi']:
         for idx, item in enumerate(st.session_state['gecici_sayim_listesi']):
             cols = st.columns([4, 1])
@@ -272,6 +308,26 @@ elif st.session_state.current_screen == "SAYIM_GIRIS":
                 if cols[1].button("🗑️", key=f"d_{idx}"):
                     st.session_state.delete_confirm = idx
                     st.rerun()
+                    
+        # EKLENEN KISIM: Veritabanına Gönderme Butonu ve Sütun Kayması Zırhı
+        if st.button("📤 VERİTABANINA GÖNDER", type="primary", use_container_width=True):
+            eski = get_internal_data("sayim")
+            yeni_df = pd.DataFrame(st.session_state['gecici_sayim_listesi'])
+            
+            sutunlar = ["Tarih", "Adres", "Kod", "Miktar", "Birim", "Personel", "isim", "Durum"]
+            
+            if not eski.empty:
+                for col in sutunlar:
+                    if col not in eski.columns:
+                        eski[col] = "-"
+                eski = eski[sutunlar] 
+                guncel_df = pd.concat([eski, yeni_df], ignore_index=True)
+            else:
+                guncel_df = yeni_df[sutunlar]
+            
+            conn.update(spreadsheet=SHEET_URL, worksheet="sayim", data=guncel_df)
+            st.session_state['gecici_sayim_listesi'] = []
+            st.rerun()
 
 # --- 5.4 SAYIM FARK RAPORU ---
 elif st.session_state.current_screen == "SAYIM_FARK":

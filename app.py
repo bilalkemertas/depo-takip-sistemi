@@ -277,7 +277,7 @@ elif st.session_state.current_screen == "SAYIM_FARK":
         t_g = df_stk.groupby(['Adres', 'Kod'])['Miktar'].sum().reset_index()
         
         # Sütun kaymasını önlemek için Stok listesindeki İsimleri bir sözlüğe hapsediyoruz
-        isim_sozlugu = df_stk.drop_duplicates(subset=['Kod']).set_index('Kod')['Ürün Adı'].to_dict()
+        isim_sozlugu = df_stk.drop_duplicates(subset=['Kod']).set_index('Kod')['İsim'].to_dict()
         
         # Önce sadece Miktarları birleştiriyoruz (Hatasız merge)
         rapor = pd.merge(s_g, t_g, on=['Adres', 'Kod'], how='outer', suffixes=('_Sayılan', '_Sistem')).fillna(0)
@@ -289,15 +289,15 @@ elif st.session_state.current_screen == "SAYIM_FARK":
         rapor['FARK'] = rapor['Miktar_Sayılan'] - rapor['Miktar_Sistem']
         
         # Sütunların yerlerini sabitle
-        rapor = rapor[['Adres', 'Kod', 'Ürün Adı', 'Miktar_Sayılan', 'Miktar_Sistem', 'FARK']]
+        rapor = rapor[['Adres', 'Kod', 'isim', 'Miktar_Sayılan', 'Miktar_Sistem', 'FARK']]
         
         rf1, rf2, rf3 = st.columns(3)
         fa = rf1.text_input("📍 Adres Filtre:").upper()
         fk = rf2.text_input("📦 Kod Filtre:").upper()
-        fi = rf3.text_input("📝 Ürün Adı Filtre:").upper()
+        fi = rf3.text_input("📝 isim Filtre:").upper()
         if fa: rapor = rapor[rapor['Adres'].astype(str).str.contains(fa)]
         if fk: rapor = rapor[rapor['Kod'].astype(str).str.contains(fk)]
-        if fi: rapor = rapor[rapor['Ürün Adı'].astype(str).str.contains(fi, case=False)]
+        if fi: rapor = rapor[rapor['isim'].astype(str).str.contains(fi, case=False)]
         st.dataframe(rapor, use_container_width=True, hide_index=True)
 
 # --- 5.5 OCA MODÜLLERİ ---

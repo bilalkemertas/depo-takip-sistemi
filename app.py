@@ -242,13 +242,29 @@ elif st.session_state.current_screen == "URETIM":
             st.data_editor(f_df, hide_index=True, use_container_width=True)
             if st.button("✅ LİSTEYİ ONAYLA"): st.success("Üretim onayı verildi!")
 
-# --- 5.3 SAYIM GİRİŞİ (GÜVENLİK DUVARI VE SÜTUN ZIRHI EKLENDİ) ---
+# --- 5.3 SAYIM GİRİŞİ (GÜNCELLENDİ: CACHE VE TANIMSIZ ÜRÜN ZIRHI) ---
 elif st.session_state.current_screen == "SAYIM_GIRIS":
-    if st.button("⬅️ ANA MENÜYE DÖN"): set_screen("MAIN")
+    
+    # 1. EKRAN AÇILDIĞINDA KATALOĞU SADECE 1 KERE ÇEKER VE HAFIZAYA ALIR (API KOTASI KORUMASI)
+    if "sayim_katalog" not in st.session_state:
+        with st.spinner("📦 Katalog veritabanından çekiliyor (Tek Seferlik)..."):
+            st.session_state.sayim_katalog = get_katalog()
+            # Güvenlik Duvarı için sadece kodları içeren bir kontrol listesi oluşturuyoruz
+            st.session_state.sayim_gecerli_kodlar = [k.split(" | ")[0].upper() for k in st.session_state.sayim_katalog]
+
+    if st.button("⬅️ ANA MENÜYE DÖN"):
+        # Menüye dönerken hafızayı temizler, böylece ekranı tekrar açtığında yeni eklenen kodları da görebilirsin.
+        if "sayim_katalog" in st.session_state: del st.session_state["sayim_katalog"]
+        if "sayim_gecerli_kodlar" in st.session_state: del st.session_state["sayim_gecerli_kodlar"]
+        set_screen("MAIN")
+        
     st.title("📝 Fiili Sayım Girişi")
+    
     with st.container(border=True):
         c_adr = st.text_input("📍 Sayım Adresi:").upper()
-        kat_sayim = get_katalog()
+        
+        # Her yazışında API'ye gitmek yerine hafızadaki kataloğu kullanır:
+        kat_sayim = st.session_state.sayim_katalog
         sec_sayim = st.selectbox("🔍 Ürün Seç (Katalogdan):", ["+ BARKOD / MANUEL GİRİŞ"] + kat_sayim)
         
         c_kod_col, c_isim_col = st.columns(2)
@@ -265,23 +281,21 @@ elif st.session_state.current_screen == "SAYIM_GIRIS":
             c_durum = st.selectbox("🛠️ Stok Durumu Seç:", ["Kullanılabilir", "Hasarlı", "İncelemede", "Blokeli"])
             
         if st.button("➕ GEÇİCİ LİSTEYE EKLE", use_container_width=True):
-            # 1. GÜVENLİK DUVARI: Sistemdeki geçerli kodların listesini oluştur
-            valid_codes = [k.split(" | ")[0].upper() for k in kat_sayim]
             
+            # 2. GÜVENLİK DUVARI: Sistemde olmayan kodun girilmesini engeller
             if not c_kod:
                 st.warning("⚠️ Lütfen bir malzeme kodu giriniz!")
-            # 2. EĞER GİRİLEN KOD SİSTEMDE YOKSA RET VER!
-            elif c_kod not in valid_codes:
-                st.error(f"🛑 İŞLEM REDDEDİLDİ: '{c_kod}' kodlu ürün sistemde tanımlı değil! Blok firesi, kapak veya sisteme açılmamış ürünlerin sayımı yapılamaz.")
+            elif c_kod not in st.session_state.sayim_gecerli_kodlar:
+                st.error(f"🛑 İŞLEM REDDEDİLDİ: '{c_kod}' kodlu ürün sistemde tanımlı değil! Sistemde Tanımı Olmayan ürünlerin sayımı yapılamaz.")
             else:
-                # Barkod okutulup isim boş bırakılırsa diye güvenlik yedeği (Katalogdan doğru ismi bulur)
+                # İsim boş bırakıldıysa veya hatalıysa, listedeki doğru ismi bulup zorla yazar
                 dogru_isim = c_isim
                 if sec_sayim == "+ BARKOD / MANUEL GİRİŞ":
                     for k in kat_sayim:
                         if k.split(" | ")[0].upper() == c_kod:
                             dogru_isim = k.split(" | ")[1]
                             break
-                
+                            
                 st.session_state['gecici_sayim_listesi'].append({
                     "Tarih": get_local_time(), 
                     "Adres": c_adr, 
@@ -298,7 +312,7 @@ elif st.session_state.current_screen == "SAYIM_GIRIS":
     if st.session_state['gecici_sayim_listesi']:
         for idx, item in enumerate(st.session_state['gecici_sayim_listesi']):
             cols = st.columns([4, 1])
-            cols[0].info(f"📍 {item['Adres']} | 📦 {item['Kod']} | 🔢 {item['Miktar']} | 🛠️ {item['Durum']}")
+            cols[0].info(f"📍 {item['Adres']} | 📦 {item['Kod']} | 📝 {item['isim']} | 🔢 {item['Miktar']} | 🛠️ {item['Durum']}")
             if st.session_state.delete_confirm == idx:
                 if cols[1].button("✅", key=f"y_{idx}"):
                     st.session_state['gecici_sayim_listesi'].pop(idx)
@@ -308,26 +322,28 @@ elif st.session_state.current_screen == "SAYIM_GIRIS":
                 if cols[1].button("🗑️", key=f"d_{idx}"):
                     st.session_state.delete_confirm = idx
                     st.rerun()
-                    
-        # EKLENEN KISIM: Veritabanına Gönderme Butonu ve Sütun Kayması Zırhı
+
+        # 3. VERİTABANINA GÖNDER VE ZIRHLI SÜTUN KAYMASI ENGELLEYİCİSİ
         if st.button("📤 VERİTABANINA GÖNDER", type="primary", use_container_width=True):
-            eski = get_internal_data("sayim")
-            yeni_df = pd.DataFrame(st.session_state['gecici_sayim_listesi'])
-            
-            sutunlar = ["Tarih", "Adres", "Kod", "Miktar", "Birim", "Personel", "isim", "Durum"]
-            
-            if not eski.empty:
-                for col in sutunlar:
-                    if col not in eski.columns:
-                        eski[col] = "-"
-                eski = eski[sutunlar] 
-                guncel_df = pd.concat([eski, yeni_df], ignore_index=True)
-            else:
-                guncel_df = yeni_df[sutunlar]
-            
-            conn.update(spreadsheet=SHEET_URL, worksheet="sayim", data=guncel_df)
-            st.session_state['gecici_sayim_listesi'] = []
-            st.rerun()
+            with st.spinner("Buluta aktarılıyor... Lütfen bekleyiniz."):
+                eski = get_internal_data("sayim")
+                yeni_df = pd.DataFrame(st.session_state['gecici_sayim_listesi'])
+                
+                sutunlar = ["Tarih", "Adres", "Kod", "Miktar", "Birim", "Personel", "isim", "Durum"]
+                
+                if not eski.empty:
+                    for col in sutunlar:
+                        if col not in eski.columns:
+                            eski[col] = "-"
+                    eski = eski[sutunlar] 
+                    guncel_df = pd.concat([eski, yeni_df], ignore_index=True)
+                else:
+                    guncel_df = yeni_df[sutunlar]
+                
+                conn.update(spreadsheet=SHEET_URL, worksheet="sayim", data=guncel_df)
+                st.session_state['gecici_sayim_listesi'] = []
+                st.success("✅ Veriler Google Sheets'e başarıyla kaydedildi!")
+                st.rerun()
 
 # --- 5.4 SAYIM FARK RAPORU ---
 elif st.session_state.current_screen == "SAYIM_FARK":

@@ -244,7 +244,7 @@ elif st.session_state.current_screen == "SAYIM_GIRIS":
         c_kod = st.text_input("📦 Kod:", value=sec_sayim.split(" | ")[0] if sec_sayim != "+ MANUEL GİRİŞ" else "").upper()
         col_c1, col_c2 = st.columns(2)
         with col_c1:
-            c_mik = st.number_input("Görülen Miktar:", min_value=0.0)
+            c_mik = st.number_input("Miktar:", min_value=0.0)
         with col_c2:
             c_durum = st.selectbox("🛠️ Stok Durumu Seç:", ["Kullanılabilir", "Hasarlı", "İncelemede", "Blokeli"])
         if st.button("➕ GEÇİCİ LİSTEYE EKLE", use_container_width=True):
@@ -267,7 +267,7 @@ elif st.session_state.current_screen == "SAYIM_GIRIS":
 # --- 5.4 SAYIM FARK RAPORU ---
 elif st.session_state.current_screen == "SAYIM_FARK":
     if st.button("⬅️ ANA MENÜYE DÖN"): set_screen("MAIN")
-    st.title("⚖️ Envanter Uyuşmazlık Raporu")
+    st.title("⚖️ Sayım Fark Raporu")
     df_say = get_internal_data("sayim")
     df_stk = get_internal_data("Stok")
     if not df_say.empty and not df_stk.empty:
@@ -277,7 +277,7 @@ elif st.session_state.current_screen == "SAYIM_FARK":
         t_g = df_stk.groupby(['Adres', 'Kod'])['Miktar'].sum().reset_index()
         
         # Sütun kaymasını önlemek için Stok listesindeki İsimleri bir sözlüğe hapsediyoruz
-        isim_sozlugu = df_stk.drop_duplicates(subset=['Kod']).set_index('Kod')['İsim'].to_dict()
+        isim_sozlugu = df_stk.drop_duplicates(subset=['Kod']).set_index('Kod')['Ürün Adı'].to_dict()
         
         # Önce sadece Miktarları birleştiriyoruz (Hatasız merge)
         rapor = pd.merge(s_g, t_g, on=['Adres', 'Kod'], how='outer', suffixes=('_Sayılan', '_Sistem')).fillna(0)
@@ -289,15 +289,15 @@ elif st.session_state.current_screen == "SAYIM_FARK":
         rapor['FARK'] = rapor['Miktar_Sayılan'] - rapor['Miktar_Sistem']
         
         # Sütunların yerlerini sabitle
-        rapor = rapor[['Adres', 'Kod', 'İsim', 'Miktar_Sayılan', 'Miktar_Sistem', 'FARK']]
+        rapor = rapor[['Adres', 'Kod', 'Ürün Adı', 'Miktar_Sayılan', 'Miktar_Sistem', 'FARK']]
         
         rf1, rf2, rf3 = st.columns(3)
         fa = rf1.text_input("📍 Adres Filtre:").upper()
         fk = rf2.text_input("📦 Kod Filtre:").upper()
-        fi = rf3.text_input("📝 İsim Filtre:").upper()
+        fi = rf3.text_input("📝 Ürün Adı Filtre:").upper()
         if fa: rapor = rapor[rapor['Adres'].astype(str).str.contains(fa)]
         if fk: rapor = rapor[rapor['Kod'].astype(str).str.contains(fk)]
-        if fi: rapor = rapor[rapor['İsim'].astype(str).str.contains(fi, case=False)]
+        if fi: rapor = rapor[rapor['Ürün Adı'].astype(str).str.contains(fi, case=False)]
         st.dataframe(rapor, use_container_width=True, hide_index=True)
 
 # --- 5.5 OCA MODÜLLERİ ---

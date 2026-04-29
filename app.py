@@ -110,22 +110,27 @@ if not st.session_state.logged_in:
 conn = st.connection("gsheets", type=GSheetsConnection)
 SHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
 
-@st.cache_data(ttl=10)
+# CACHE İPTAL EDİLDİ! ARTIK ESKİ VERİ GELMESİ İMKANSIZ (%100 CANLI BAĞLANTI)
 def get_internal_data(worksheet_name):
     try:
         df = conn.read(spreadsheet=SHEET_URL, worksheet=worksheet_name, ttl=0)
         df.columns = df.columns.str.strip()
-        # Kodları zorunlu metne çevirme garantisi
+        # "Kod" veya "kod" sütunlarını zorunlu metne çevirme garantisi
         if 'Kod' in df.columns:
             df['Kod'] = df['Kod'].astype(str).str.strip().replace(r'\.0$', '', regex=True)
+        if 'kod' in df.columns:
+            df['kod'] = df['kod'].astype(str).str.strip().replace(r'\.0$', '', regex=True)
         return df.fillna("-")
     except: return pd.DataFrame()
 
 def get_katalog():
-    # PATRON: Katalog artık sadece Stok'tan değil, doğrudan Ürün Listesi'nden besleniyor!
     df = get_internal_data("Urun_Listesi")
-    if not df.empty and 'Kod' in df.columns and 'İsim' in df.columns:
-        df['Arama'] = df['Kod'].astype(str) + " | " + df['İsim'].astype(str)
+    if df.empty: df = get_internal_data("ürün listesi")
+    if df.empty: df = get_internal_data("Ürün Listesi")
+    
+    # Urun_Listesi sekmesinde sütunlar: kod, isim
+    if not df.empty and 'kod' in df.columns and 'isim' in df.columns:
+        df['Arama'] = df['kod'].astype(str) + " | " + df['isim'].astype(str)
         return sorted(df['Arama'].unique().tolist())
     return []
 
@@ -275,42 +280,51 @@ elif st.session_state.current_screen == "SAYIM_FARK":
     
     df_say = get_internal_data("sayim")
     df_stk = get_internal_data("Stok")
+    
     df_urun = get_internal_data("Urun_Listesi")
+    if df_urun.empty: df_urun = get_internal_data("ürün listesi")
+    if df_urun.empty: df_urun = get_internal_data("Ürün Listesi")
     
     if not df_say.empty:
-        # 1. Eski sayım kayıtlarında 'Durum' sütunu yoksa hata vermesin diye boş atama yapıyoruz
         if 'Durum' not in df_say.columns:
             df_say['Durum'] = "Belirtilmemiş"
             
-        # 2. Sayım tablosunu ANA TABLO olarak kabul edip grupluyoruz (Durum bilgisiyle birlikte)
         df_say['Miktar'] = pd.to_numeric(df_say['Miktar'], errors='coerce').fillna(0)
+        # sayim sekmesi sütunları: Tarih, Adres, Kod, Miktar, Birim, Personel, isim, Durum (Kod büyük, isim küçük)
         s_g = df_say.groupby(['Adres', 'Kod', 'Durum'])['Miktar'].sum().reset_index()
         s_g.rename(columns={'Miktar': 'Miktar_Sayılan'}, inplace=True)
         
-        # 3. Stok tablosunu adrese ve koda göre grupluyoruz (Yanına çekmek için)
         if not df_stk.empty:
             df_stk['Miktar'] = pd.to_numeric(df_stk['Miktar'], errors='coerce').fillna(0)
+            # Stok sekmesi sütunları: Adres, Kod, İsim, Birim, Miktar (Adres, Kod büyük)
             t_g = df_stk.groupby(['Adres', 'Kod'])['Miktar'].sum().reset_index()
             t_g.rename(columns={'Miktar': 'Miktar_Sistem'}, inplace=True)
         else:
             t_g = pd.DataFrame(columns=['Adres', 'Kod', 'Miktar_Sistem'])
         
-        # 4. Ürün Listesi'nden taze ve kesin isim sözlüğünü oluşturuyoruz
+        # BÜYÜK/KÜÇÜK HARFE GÖRE ZIRHLANDIRILMIŞ İSİM HAVUZU
         isim_sozlugu = {}
-        if not df_urun.empty and 'Kod' in df_urun.columns and 'İsim' in df_urun.columns:
-            isim_sozlugu = df_urun.drop_duplicates(subset=['Kod']).set_index('Kod')['İsim'].to_dict()
         
-        # 5. BİRLEŞTİRME (Sadece Sayım listesindeki satırları merkeze alarak "LEFT JOIN" yapıyoruz)
+        # 1. Stok tablosu ('Kod' ve 'İsim')
+        if not df_stk.empty and 'İsim' in df_stk.columns and 'Kod' in df_stk.columns:
+            isim_sozlugu.update(df_stk.drop_duplicates(subset=['Kod']).set_index('Kod')['İsim'].to_dict())
+            
+        # 2. Sayım tablosu ('Kod' ve 'isim')
+        if 'isim' in df_say.columns and 'Kod' in df_say.columns:
+            isim_sozlugu.update(df_say.drop_duplicates(subset=['Kod']).set_index('Kod')['isim'].to_dict())
+            
+        # 3. Urun_Listesi ('kod' ve 'isim')
+        if not df_urun.empty and 'isim' in df_urun.columns and 'kod' in df_urun.columns:
+            isim_sozlugu.update(df_urun.drop_duplicates(subset=['kod']).set_index('kod')['isim'].to_dict())
+        
+        # BİRLEŞTİRME VE ATAMA
         rapor = pd.merge(s_g, t_g, on=['Adres', 'Kod'], how='left').fillna(0)
         
-        # 6. İsimleri güvenle atıyoruz
-        rapor['İsim'] = rapor['Kod'].map(isim_sozlugu).fillna("TANIMSIZ")
-        
-        # 7. Fark hesaplama
+        # İsimleri sözlükten Kod'a göre çekiyoruz
+        rapor['İsim_Bulunan'] = rapor['Kod'].map(isim_sozlugu).fillna("TANIMSIZ")
         rapor['FARK'] = rapor['Miktar_Sayılan'] - rapor['Miktar_Sistem']
         
-        # 8. Sütunların yerlerini ve görünümlerini sabitleme (Durum dahil)
-        rapor = rapor[['Adres', 'Kod', 'İsim', 'Durum', 'Miktar_Sayılan', 'Miktar_Sistem', 'FARK']]
+        rapor = rapor[['Adres', 'Kod', 'İsim_Bulunan', 'Durum', 'Miktar_Sayılan', 'Miktar_Sistem', 'FARK']]
         rapor.columns = ['📍 Adres', '📦 Kod', '📝 İsim', '🛠️ Durum', '🔢 Sayılan', '💻 Sistem', '⚖️ FARK']
         
         rf1, rf2, rf3 = st.columns(3)

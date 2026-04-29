@@ -282,7 +282,7 @@ elif st.session_state.current_screen == "SAYIM_FARK":
         # Önce sadece Miktarları birleştiriyoruz (Hatasız merge)
         rapor = pd.merge(s_g, t_g, on=['Adres', 'Kod'], how='outer', suffixes=('_Sayılan', '_Sistem')).fillna(0)
         
-        # Sonra isimleri Kod üzerinden güvenli bir şekilde çağırıyoruz
+        # Sonra leri Kod üzerinden güvenli bir şekilde çağırıyoruz
         rapor['İsim'] = rapor['Kod'].map(isim_sozlugu).fillna("TANIMSIZ")
         
         # Farkı Hesapla

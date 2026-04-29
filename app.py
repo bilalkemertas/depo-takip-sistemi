@@ -313,7 +313,7 @@ elif st.session_state.current_screen == "SAYIM_GIRIS":
         for idx, item in enumerate(st.session_state['gecici_sayim_listesi']):
             cols = st.columns([4, 1])
             isim_goster = item.get('isim', 'TANIMSIZ') # Eğer isim yoksa çökme, TANIMSIZ yaz.
-cols[0].info(f"📍 {item.get('Adres','-')} | 📦 {item.get('Kod','-')} | 📝 {isim_goster} | 🔢 {item.get('Miktar',0)} | 🛠️ {item.get('Durum','-')}")
+            cols[0].info(f"📍 {item.get('Adres','-')} | 📦 {item.get('Kod','-')} | 📝 {isim_goster} | 🔢 {item.get('Miktar',0)} | 🛠️ {item.get('Durum','-')}")
             if st.session_state.delete_confirm == idx:
                 if cols[1].button("✅", key=f"y_{idx}"):
                     st.session_state['gecici_sayim_listesi'].pop(idx)

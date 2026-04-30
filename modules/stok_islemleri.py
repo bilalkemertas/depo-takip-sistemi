@@ -8,7 +8,7 @@ def run_islem(conn):
     try:
         # --- GÜNCELLEME: Sayfa adı "Urun_Listesi" olarak değiştirildi ---
         df_stok = conn.read(worksheet="Urun_Listesi")
-        df_hareketler = conn.read(worksheet="Hareketler")
+        df_hareketler = conn.read(worksheet="HAREKETLER")
         
         # Akıllı Arama Bölümü
         search_query = st.text_input("🔍 Ürün Ara (Ad veya Kod yazın)", "")

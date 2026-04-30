@@ -25,7 +25,7 @@ def run_islem(conn):
         # Seçim Kutusu
         if not filtered_df.empty:
             # Seçenekleri hazırlıyoruz
-            options = filtered_df.apply(lambda x: f"{x['URUN_KODU']} | {x['URUN_ADI']}", axis=1).tolist()
+            options = filtered_df.apply(lambda x: f"{x['kod']} | {x['isim']}", axis=1).tolist()
             selected_option = st.selectbox("Ürünü Onaylayın:", options)
             
             # Seçilen Ürünün Detaylarını Ayıkla

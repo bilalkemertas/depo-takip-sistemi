@@ -30,7 +30,7 @@ def run_islem(conn):
             
             # Seçilen Ürünün Detaylarını Ayıkla
             sel_kodu = selected_option.split(" | ")[0]
-            urun_bilgi = df_stok[df_stok['URUN_KODU'] == sel_kodu].iloc[0]
+            urun_bilgi = df_stok[df_stok['kod'] == sel_kodu].iloc[0]
             
             # Mevcut stok miktarını göster (Urun_Listesi'nden çekilir)
             st.info(f"Mevcut Stok: {urun_bilgi.get('MIKTAR', 0)} {urun_bilgi.get('BIRIM', 'ADET')}")

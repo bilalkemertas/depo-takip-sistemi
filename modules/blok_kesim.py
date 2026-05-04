@@ -2,112 +2,111 @@ import streamlit as st
 import pandas as pd
 
 def run_blok_kesim(conn):
-    st.title("✂️ Blok & Rulo Kesim Otomasyonu")
+    st.title("✂️ Blok & Rulo Kesim (12K SKU Destekli)")
     
-    # --- 1. VERİ YÜKLEME VE KÖPRÜ ---
+    # --- 1. HAFIZAYI (MAPPING) YÜKLE ---
+    try:
+        mapping_df = conn.read(worksheet="Eşleşmeler", ttl="0")
+    except:
+        mapping_df = pd.DataFrame(columns=["Tedarikçi_Kodu", "Bizim_Kod", "Bizim_İsim"])
+
     with st.sidebar:
         st.header("📁 Veri Kaynağı")
         uploaded_file = st.file_uploader("DataGrid Excel Dosyasını Yükleyin", type=['xlsx'])
         
         if uploaded_file:
-            # Excel sekmelerini oku
             df_main = pd.read_excel(uploaded_file, sheet_name='Main sheet')
             df_sunger = pd.read_excel(uploaded_file, sheet_name='Sünger')
             
-            # Senin mantığınla kategorize etme fonksiyonu
-            def classify_and_map(row):
-                tanim = str(row['Malzeme Tanımı']).upper()
-                miktar = row['Teslimat Miktarı']
-                
-                if "BLOKCM" in tanim:
-                    return "Blok", "cm (Yükseklik)", miktar
-                elif "RULO" in tanim:
-                    return "Rulo", "mt (Uzunluk)", miktar
-                elif "DUZ" in tanim:
-                    return "Plaka", "Adet (Paket içi)", miktar
-                return "Diğer", "Birim", miktar
+            # Sınıflandırma Mantığı (Senin Kuralların)
+            def classify(tanim):
+                tanim_up = str(tanim).upper()
+                if "BLOKCM" in tanim_up: return "Blok"
+                elif "RULO" in tanim_up: return "Rulo"
+                elif "DUZ" in tanim_up: return "Plaka"
+                return "Diğer"
 
-            # Köprüyü kur
-            df_main[['Kategori', 'Birim', 'Net_Miktar']] = df_main.apply(
-                lambda x: pd.Series(classify_and_map(x)), axis=1
+            df_main['Kategori'] = df_main['Malzeme Tanımı'].apply(classify)
+            
+            # 12.000 Satırı Hafızadaki Eşleşmelerle Birleştir (Hızlı Merge)
+            df_final = df_main.merge(
+                mapping_df[['Tedarikçi_Kodu', 'Bizim_Kod', 'Bizim_İsim']], 
+                left_on='Malzeme Kodu', 
+                right_on='Tedarikçi_Kodu', 
+                how='left'
             )
             
-            st.session_state['main_data'] = df_main
+            st.session_state['main_data'] = df_final
             st.session_state['sunger_data'] = df_sunger
-            st.success("Excel Köprüsü Kuruldu!")
+            st.success(f"Analiz Tamamlandı! {len(df_main)} sevkiyat satırı işlendi.")
 
-    # --- 2. ANALİZ VE ÖZET PANELİ ---
+    # --- 2. EKRAN YÖNETİMİ ---
     if 'main_data' in st.session_state:
         df = st.session_state['main_data']
-        
+        unmapped = df[df['Bizim_Kod'].isna()][['Malzeme Kodu', 'Malzeme Tanımı']].drop_duplicates()
+
+        # Özet Bilgiler
         c1, c2, c3 = st.columns(3)
-        with c1:
-            blok_sayisi = len(df[df['Kategori'] == "Blok"])
-            st.metric("Toplam Blok", f"{blok_sayisi} Adet")
-        with c2:
-            rulo_sayisi = len(df[df['Kategori'] == "Rulo"])
-            st.metric("Toplam Rulo", f"{rulo_sayisi} Adet")
-        with c3:
-            plaka_paket = len(df[df['Kategori'] == "Plaka"])
-            plaka_adet = df[df['Kategori'] == "Plaka"]['Net_Miktar'].sum()
-            st.metric("Plaka (Paket/Adet)", f"{plaka_paket} Pk / {int(plaka_adet)} Adet")
+        with c1: st.metric("Toplam Satır", len(df))
+        with c2: st.metric("Tanınan Ürünler", len(df[df['Bizim_Kod'].notna()]))
+        with c3: st.metric("Bekleyen Yeni SKU", len(unmapped))
 
-        st.divider()
-
-        # --- 3. OPERASYON: PARTİ NO İLE İŞLEM ---
-        st.subheader("🛠️ Kesim / Sevkiyat İşlemi")
-        parti_no = st.text_input("🔍 Parti No (Seri No) Okutun veya Girin")
-
-        if parti_no:
-            # Parti No üzerinden ürünü bul
-            match = df[df['Parti No'].astype(str) == str(parti_no)]
-            
-            if not match.empty:
-                row = match.iloc[0]
-                with st.container(border=True):
-                    col_a, col_b = st.columns(2)
-                    with col_a:
-                        st.write(f"**Ürün:** {row['Malzeme Tanımı']}")
-                        st.write(f"**Kategori:** {row['Kategori']}")
-                    with col_b:
-                        st.write(f"**Mevcut Miktar:** {row['Net_Miktar']} {row['Birim']}")
-                        st.write(f"**Malzeme Kodu:** {row['Malzeme Kodu']}")
-
-                # --- 4. STOK KARTI EŞLEŞTİRME (KÖPRÜ) ---
-                st.info("🔗 Bu ürünü bizim stok kartımızla eşleştirin:")
-                bizim_kartlar = st.session_state['sunger_data']
+        # --- 3. AKILLI EŞLEŞTİRME (12.000 SKU İÇİNDE ARAMA) ---
+        if not unmapped.empty:
+            with st.expander("⚠️ Yeni Ürün Tiplerini Tanımla", expanded=True):
+                target_row = unmapped.iloc[0] # Sıradaki ilk bilinmeyen ürünü getir
+                st.write(f"Şu an eşleşen: **{target_row['Malzeme Tanımı']}** ({target_row['Malzeme Kodu']})")
                 
-                # İsimden otomatik öneri yapalım
-                search_term = str(row['Malzeme Tanımı']).split(' ')[0] # Örn: '27'
-                önerilenler = bizim_kartlar[bizim_kartlar['isim'].str.contains(search_term, na=False)]
+                # 12.000 SKU İçinde Arama Kutusu
+                search_query = st.text_input("Stok Kartı Ara (İsim veya Kod yazın...)", key="sku_search")
                 
-                secilen_kart = st.selectbox(
-                    "Bizim Stok Kartımız:", 
-                    options=bizim_kartlar['isim'].tolist(),
-                    index=bizim_kartlar['isim'].tolist().index(önerilenler.iloc[0]['isim']) if not önerilenler.empty else 0
-                )
-                
-                # Seçilen kartın kodunu getir
-                bizim_kod = bizim_kartlar[bizim_kartlar['isim'] == secilen_kart]['kod'].values[0]
-                st.code(f"Eşleşen Kod: {bizim_kod}", language="text")
-
-                # --- 5. KESİM GİRİŞİ ---
-                st.divider()
-                if row['Kategori'] == "Blok":
-                    st.write("📐 **Blok Kesim Detayları**")
-                    k_kalinlik = st.number_input("Kesilecek Plaka Kalınlığı (cm)", min_value=0.5, step=0.5)
-                    k_adet = st.number_input("Çıkan Plaka Adedi", min_value=1, step=1)
+                if search_query:
+                    # 12.000 SKU içinde filtreleme yapıyoruz (Büyük/Küçük harf duyarsız)
+                    filtered_skus = st.session_state['sunger_data'][
+                        st.session_state['sunger_data']['isim'].str.contains(search_query, case=False, na=False) |
+                        st.session_state['sunger_data']['kod'].str.contains(search_query, case=False, na=False)
+                    ].head(10) # Sadece ilk 10 sonucu göster ki ekran kasılmasın
                     
-                    if st.button("KESİMİ ONAYLA VE STOĞA İŞLE"):
-                        # Burada Google Sheets'e (conn) yazma işlemi yapılacak
-                        st.balloons()
-                        st.success(f"{secilen_kart} stok kartına {k_adet} adet giriş yapıldı.")
-                
-                elif row['Kategori'] == "Plaka":
-                    st.write("📦 **Paket Açma / Sevkiyat**")
-                    if st.button("PAKETİ STOĞA AL"):
-                        st.success(f"{row['Net_Miktar']} adet ürün {bizim_kod} koduyla stoğa işlendi.")
-            else:
-                st.error("Girdiğiniz Parti No bulunamadı. Lütfen Excel'i kontrol edin.")
+                    if not filtered_skus.empty:
+                        selected_sku = st.radio("En Yakın Sonuçlar:", filtered_skus['isim'].tolist(), key="sku_radio")
+                        
+                        if st.button("BU KARTI EŞLEŞTİR VE KAYDET"):
+                            bizim_kart = filtered_skus[filtered_skus['isim'] == selected_sku].iloc[0]
+                            # Yeni eşleşmeyi listeye ekle
+                            yeni_kayit = pd.DataFrame([{
+                                "Tedarikçi_Kodu": target_row['Malzeme Kodu'],
+                                "Bizim_Kod": bizim_kart['kod'],
+                                "Bizim_İsim": bizim_kart['isim']
+                            }])
+                            # Google Sheets Güncelle
+                            conn.create(worksheet="Eşleşmeler", data=pd.concat([mapping_df, yeni_kayit]), update=True)
+                            st.success("Hafızaya alındı! Sayfa yenileniyor...")
+                            st.rerun()
+                    else:
+                        st.warning("Aradığınız kriterde bir stok kartı bulunamadı.")
+
+        # --- 4. OPERASYON: PARTİ NO İLE SORGULAMA ---
+        st.divider()
+        parti_input = st.text_input("🔍 Parti No (Barkod) Okutun")
+        
+        if parti_input:
+            match = df[df['Parti No'].astype(str) == str(parti_input)]
+            if not match.empty:
+                item = match.iloc[0]
+                if pd.notna(item['Bizim_Kod']):
+                    with st.container(border=True):
+                        st.success(f"Ürün Tanındı: **{item['Bizim_İsim']}**")
+                        st.write(f"Tedarikçi Kodu: {item['Malzeme Kodu']} | Kategori: {item['Kategori']}")
+                        
+                        # Miktar Gösterimi (Senin Kuralların)
+                        m = item['Teslimat Miktarı']
+                        if item['Kategori'] == "Blok": st.info(f"📏 Yükseklik: {m} cm")
+                        elif item['Kategori'] == "Rulo": st.info(f"🌀 Uzunluk: {m} mt")
+                        elif item['Kategori'] == "Plaka": st.info(f"📦 Paket İçi: {int(m)} Adet")
+                        
+                        if st.button("HAREKETİ KAYDET"):
+                            st.balloons()
+                else:
+                    st.error("Bu ürünün tipi henüz eşleştirilmemiş. Lütfen yukarıdaki panelden eşleştirin.")
     else:
-        st.info("Sistemi başlatmak için lütfen sol taraftan Excel dosyasını yükleyin.")
+        st.info("Lütfen sol menüden Excel dosyasını yükleyin.")

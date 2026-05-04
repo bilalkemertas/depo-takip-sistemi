@@ -21,7 +21,7 @@ def fetch_supplier_data():
             # 2. Adım: Rapor sayfasına git
             response = session.get(DATA_URL, timeout=10)
             
-            if response.status_status == 200:
+            if response.status_code == 200:
                 # 3. Adım: HTML içindeki tabloyu pandas ile oku
                 # Not: Eğer birden fazla tablo varsa index [0] değişebilir
                 tables = pd.read_html(response.text)

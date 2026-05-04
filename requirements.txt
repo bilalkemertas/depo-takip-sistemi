@@ -4,3 +4,9 @@ requests
 beautifulsoup4
 lxml
 st-gsheets-connection
+streamlit
+st-gsheets-connection
+pandas
+requests
+beautifulsoup4
+openpyxl

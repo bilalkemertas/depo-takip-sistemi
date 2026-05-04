@@ -1,4 +1,6 @@
 streamlit
+streamlit-gsheets
 pandas
-st-gsheets-connection
-xlsxwriter
+requests
+beautifulsoup4
+lxml

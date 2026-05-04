@@ -4,3 +4,8 @@ pandas
 requests
 beautifulsoup4
 lxml
+streamlit
+streamlit-gsheets
+pandas
+requests
+beautifulsoup4

@@ -7,7 +7,7 @@ def run_islem(conn):
     
     try:
         df_stok = conn.read(worksheet="Urun_Listesi")
-        df_hareketler = conn.read(worksheet="HAREKETLER")
+        df_hareketler = conn.read(worksheet="Hareketler")
         
         # Akıllı Arama
         search_query = st.text_input("🔍 Ürün Ara (Ad veya Kod yazın)", "")
@@ -55,7 +55,7 @@ def run_islem(conn):
                     }])
                     
                     updated_df = pd.concat([df_hareketler, yeni_kayit], ignore_index=True)
-                    conn.update(worksheet="HAREKETLER", data=updated_df)
+                    conn.update(worksheet="Hareketler", data=updated_df)
                     st.success(f"İşlem Kaydedildi. Personel: {personel}")
                     st.balloons()
         else:
@@ -69,7 +69,7 @@ def run_transfer(conn):
     
     try:
         df_stok = conn.read(worksheet="Urun_Listesi")
-        df_hareketler = conn.read(worksheet="HAREKETLER")
+        df_hareketler = conn.read(worksheet="Hareketler")
         
         search_transfer = st.text_input("🔍 Transfer Edilecek Ürünü Ara", key="trans_search")
         
@@ -108,7 +108,7 @@ def run_transfer(conn):
                                    "Adres": yeni_adres, "Miktar": transfer_miktar, "İşlem": "TRANSFER GİRİŞ", "Personel": personel}
                     
                     yeni_hareketler = pd.concat([df_hareketler, pd.DataFrame([cikis_kaydi, giris_kaydi])], ignore_index=True)
-                    conn.update(worksheet="HAREKETLER", data=yeni_hareketler)
+                    conn.update(worksheet="Hareketler", data=yeni_hareketler)
                     st.success(f"{transfer_miktar} adet ürün {yeni_adres} adresine taşındı.")
         else:
             st.warning("Ürün bulunamadı.")

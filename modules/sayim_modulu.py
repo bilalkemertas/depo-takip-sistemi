@@ -3,7 +3,6 @@ import pandas as pd
 import io
 from datetime import datetime
 
-# Navigasyon Fonksiyonları
 def go_sayim_menu(): st.session_state.sayim_page = 'menu'
 def go_oturum(): st.session_state.sayim_page = 'oturum'
 def go_giris(): st.session_state.sayim_page = 'giris'
@@ -16,11 +15,9 @@ def run(conn):
 
     # --- 0. ANA MENÜ ---
     if st.session_state.sayim_page == 'menu':
-        c_nav, c_title = st.columns([1, 4])
-        with c_nav:
-            if st.button("⬅️ ANA MENÜ"): 
-                st.session_state.page = 'home'
-                st.rerun()
+        if st.button("⬅️ ANA MENÜ"): 
+            st.session_state.page = 'home'
+            st.rerun()
         st.subheader("⚖️ Sayım Kontrol Merkezi")
         st.markdown("---")
         c1, c2, c3 = st.columns(3)
@@ -31,80 +28,103 @@ def run(conn):
         if st.session_state.aktif_sayim_adi:
             st.success(f"📡 Aktif Oturum: **{st.session_state.aktif_sayim_adi}**")
         else:
-            st.info("ℹ️ Lütfen Oturum Yönetimi'nden yeni bir sayım başlatın.")
+            st.info("ℹ️ İşlem için Oturum Yönetimi'nden bir sayım başlatın.")
 
-    # --- 1. OTURUM YÖNETİMİ (BURASI REVİZE EDİLDİ) ---
+    # --- 1. OTURUM YÖNETİMİ ---
     elif st.session_state.sayim_page == 'oturum':
         if st.button("⬅️ GERİ"): go_sayim_menu(); st.rerun()
         st.subheader("📁 Oturum Yönetimi")
         
-        # Verileri Oku
         df_sayim_ana = conn.read(worksheet="sayim")
         df_tamamlanan = conn.read(worksheet="sayim_tamamlanan")
-        tamamlanmis_oturumlar = df_tamamlanan['Oturum_Adi'].dropna().unique().tolist() if not df_tamamlanan.empty else []
-
-        # DURUM A: AKTİF OTURUM YOKSA
+        
         if st.session_state.aktif_sayim_adi is None:
             st.markdown("### 🆕 Yeni Sayım Başlat")
-            sayim_etiketi = st.text_input("Oturum Adı (Örn: Blok_B):", placeholder="Oturum İsmi Giriniz...")
-            
-            if st.button("🚀 SAYIM OTURUMUNU ŞİMDİ BAŞLAT", use_container_width=True, type="primary"):
+            sayim_etiketi = st.text_input("Oturum Adı (Örn: Depo_A):")
+            if st.button("🚀 SAYIMI BAŞLAT", use_container_width=True, type="primary"):
                 if sayim_etiketi:
-                    zaman = datetime.now().strftime("%d%m_%H%M")
-                    yeni_id = f"{sayim_etiketi}_{zaman}"
-                    
-                    # SNAPSHOT: Mevcut stoğu o anki haliyle dondur (Fark raporu için)
-                    df_stok_anlik = conn.read(worksheet="Urun_Listesi")
-                    if not df_stok_anlik.empty:
-                        df_stok_anlik['Oturum_Adi'] = yeni_id
+                    yeni_id = f"{sayim_etiketi}_{datetime.now().strftime('%d%m_%H%M')}"
+                    # SNAPSHOT ALMA (Sistem stoğunu o anki haliyle dondurur)
+                    df_anlik = conn.read(worksheet="Urun_Listesi")
+                    if not df_anlik.empty:
+                        df_anlik['Oturum_Adi'] = yeni_id
                         try:
-                            mevcut_snapshots = conn.read(worksheet="sayim_snapshot")
-                            yeni_snapshots = pd.concat([mevcut_snapshots, df_stok_anlik], ignore_index=True)
+                            eski_snap = conn.read(worksheet="sayim_snapshot")
+                            conn.update(worksheet="sayim_snapshot", data=pd.concat([eski_snap, df_anlik], ignore_index=True))
                         except:
-                            yeni_snapshots = df_stok_anlik
-                            
-                        conn.update(worksheet="sayim_snapshot", data=yeni_snapshots)
-                    
+                            conn.update(worksheet="sayim_snapshot", data=df_anlik)
                     st.session_state.aktif_sayim_adi = yeni_id
-                    st.success(f"Oturum Açıldı: {yeni_id}")
                     st.rerun()
-                else:
-                    st.error("Lütfen bir oturum ismi girin!")
-
-            # Bekleyenleri Listele
-            if not df_sayim_ana.empty:
-                tum_oturumlar = df_sayim_ana['Oturum_Adi'].unique().tolist()
-                bekleyenler = [o for o in tum_oturumlar if o not in tamamlanmis_oturumlar]
-                if bekleyenler:
-                    st.markdown("---")
-                    st.markdown("### ⏳ Bekleyen Oturumlar")
-                    sec_oturum = st.selectbox("Devam edilecek oturumu seçin:", bekleyenler)
-                    if st.button("🔄 SEÇİLİ OTURUMU AKTİFLEŞTİR"):
-                        st.session_state.aktif_sayim_adi = sec_oturum
-                        st.rerun()
-
-        # DURUM B: AKTİF OTURUM VARSA
         else:
-            st.success(f"📡 Şuan Çalışılan Oturum: **{st.session_state.aktif_sayim_adi}**")
-            with st.container(border=True):
-                if st.button("🛑 OTURUMU KAPAT (Verileri Silmez)", use_container_width=True):
-                    st.session_state.aktif_sayim_adi = None
-                    st.rerun()
-                
-                st.divider()
-                st.warning("⚠️ STOKLARI GÜNCELLE: Sayımı bitirip ana stoğa işler.")
-                onay = st.checkbox("Sayım sonuçlarının kesinliğini onaylıyorum.")
-                if st.button("🚀 STOKLARI GÜNCELLE VE ARŞİVLE", type="primary", use_container_width=True, disabled=not onay):
-                    # ... (Stok güncelleme mantığı burada çalışır)
-                    pass
+            st.success(f"📡 Aktif: {st.session_state.aktif_sayim_adi}")
+            if st.button("🛑 OTURUMU KAPAT", use_container_width=True):
+                st.session_state.aktif_sayim_adi = None
+                st.rerun()
 
     # --- 2. SAYIM GİRİŞİ ---
     elif st.session_state.sayim_page == 'giris':
         if st.button("⬅️ GERİ"): go_sayim_menu(); st.rerun()
-        st.subheader("📝 Sayım Girişi")
+        if not st.session_state.aktif_sayim_adi:
+            st.warning("Önce oturum başlatın!")
+            return
+            
+        with st.form("sayim_form"):
+            s_adr = st.text_input("📍 Adres:").upper()
+            s_kod = st.text_input("📦 Ürün Kodu:").upper()
+            s_mik = st.number_input("Miktar:", min_value=0.0)
+            if st.form_submit_button("LİSTEYE EKLE"):
+                st.session_state['gecici_sayim_listesi'].append({
+                    "Oturum_Adi": st.session_state.aktif_sayim_adi,
+                    "Tarih": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "Adres": s_adr, "Kod": s_kod, "Miktar": s_mik,
+                    "Personel": st.session_state.get('user', 'Bilinmeyen')
+                })
         
-        if st.session_state.aktif_sayim_adi is None:
-            st.warning("⚠️ Önce Oturum Yönetimi'nden bir sayım başlatmalısın Patron!")
-        else:
-            st.info(f"📍 Oturum: {st.session_state.aktif_sayim_adi}")
-            # ... (Senin verdiğin giriş formu kodları aynen burada devam eder)
+        if st.session_state['gecici_sayim_listesi']:
+            st.dataframe(pd.DataFrame(st.session_state['gecici_sayim_listesi']))
+            if st.button("📤 BULUTA KAYDET"):
+                eski_sayim = conn.read(worksheet="sayim")
+                yeni_sayim = pd.concat([eski_sayim, pd.DataFrame(st.session_state['gecici_sayim_listesi'])], ignore_index=True)
+                conn.update(worksheet="sayim", data=yeni_sayim)
+                st.session_state['gecici_sayim_listesi'] = []
+                st.success("Kaydedildi!")
+
+    # --- 3. FARK RAPORU (BURASI SENİN İSTEDİĞİN KISIM) ---
+    elif st.session_state.sayim_page == 'rapor':
+        if st.button("⬅️ GERİ"): go_sayim_menu(); st.rerun()
+        st.subheader("📊 Sayım Fark Raporu")
+        
+        df_sayim = conn.read(worksheet="sayim")
+        df_snap = conn.read(worksheet="sayim_snapshot")
+        
+        if not df_sayim.empty:
+            oturumlar = df_sayim['Oturum_Adi'].unique().tolist()
+            secilen = st.selectbox("Analiz edilecek oturum:", oturumlar)
+            
+            # Sayılan ve Sistem verilerini filtrele
+            s_data = df_sayim[df_sayim['Oturum_Adi'] == secilen].groupby(['Adres', 'Kod'])['Miktar'].sum().reset_index()
+            sys_data = df_snap[df_snap['Oturum_Adi'] == secilen].groupby(['ADRES', 'kod'])['MIKTAR'].sum().reset_index()
+            sys_data.columns = ['Adres', 'Kod', 'Sistem_Stogu']
+            
+            # Karşılaştırma (Merge)
+            fark_df = pd.merge(s_data, sys_data, on=['Adres', 'Kod'], how='outer').fillna(0)
+            fark_df['FARK'] = fark_df['Miktar'] - fark_df['Sistem_Stogu']
+            
+            # Metrikler
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Toplam Sayılan", int(fark_df['Miktar'].sum()))
+            c2.metric("Sistem Beklenen", int(fark_df['Sistem_Stogu'].sum()))
+            c3.metric("Net Fark", int(fark_df['FARK'].sum()), delta=int(fark_df['FARK'].sum()))
+            
+            # Renkli Tablo
+            def color_fark(val):
+                color = 'red' if val < 0 else 'green' if val > 0 else 'black'
+                return f'color: {color}'
+            
+            st.dataframe(fark_df.style.applymap(color_fark, subset=['FARK']), use_container_width=True)
+            
+            # Excel İndir
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                fark_df.to_excel(writer, index=False, sheet_name='Fark_Raporu')
+            st.download_button("📥 RAPORU EXCEL OLARAK İNDİR", output.getvalue(), f"Fark_{secilen}.xlsx")

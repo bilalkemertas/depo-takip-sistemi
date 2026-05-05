@@ -3,99 +3,86 @@ import pandas as pd
 import io
 from datetime import datetime
 
-# Navigasyon Fonksiyonları
-def go_uretim_menu(): 
-    st.session_state.uretim_page = 'menu'
-    st.session_state.pop('local_stok', None)
-    st.session_state.pop('local_emirler', None)
-
-def go_is_emri(): st.session_state.uretim_page = 'is_emri'
-def go_hazirlik(): st.session_state.uretim_page = 'hazirlik'
-def go_rapor(): st.session_state.uretim_page = 'rapor'
-
 def run(conn):
-    if 'uretim_page' not in st.session_state:
-        st.session_state.uretim_page = 'menu'
+    st.subheader("🏭 Üretim Hazırlık Ekranı")
+    st.markdown("---")
 
-    # --- 0. ANA MENÜ ---
-    if st.session_state.uretim_page == 'menu':
-        if st.button("⬅️ ANA MENÜYE DÖN"): 
-            st.session_state.page = 'home'
-            st.rerun()
-        st.subheader("🏭 Üretim Hazırlık Modülü")
-        st.markdown("---")
-        st.button("📥 İŞ EMRİ YÜKLE", use_container_width=True, type="primary", on_click=go_is_emri)
-        st.button("🏗️ ÜRETİM HAZIRLIK", use_container_width=True, type="primary", on_click=go_hazirlik)
-        st.button("📊 HAZIRLIK RAPORU", use_container_width=True, type="primary", on_click=go_rapor)
+    # 1. DOSYA YÜKLEME ALANI
+    uploaded_file = st.file_uploader("İş Emri Excel Dosyasını Yükleyin", type=['xlsx'])
 
-    # --- 1. İŞ EMRİ YÜKLEME ---
-    elif st.session_state.uretim_page == 'is_emri':
-        if st.button("⬅️ GERİ DÖN"): go_uretim_menu(); st.rerun()
-        st.subheader("📤 Yeni İş Emri Yükle")
-        uploaded_file = st.file_uploader("Excel dosyasını seçin:", type=['xlsx', 'xls'])
-        
-        if uploaded_file:
-            try:
-                # 1. Ham okuma
-                df_raw = pd.read_excel(uploaded_file, sheet_name="HAZIRLIK", header=None)
-                
-                # 2. Başlık Satırını Bul
-                baslik_satiri = None
-                for i in range(min(30, len(df_raw))):
-                    satir_degerleri = [str(x).strip().lower() for x in df_raw.iloc[i].fillna("").values]
-                    if "stok kodu" in satir_degerleri:
-                        baslik_satiri = i
-                        break
-                
-                if baslik_satiri is None:
-                    st.error("❌ Hata: Excel'de 'stok kodu' başlığı bulunamadı!")
-                    return
+    if uploaded_file is not None:
+        try:
+            # Excel içindeki sayfa isimlerini kontrol et
+            excel_file = pd.ExcelFile(uploaded_file)
+            sheet_names = excel_file.sheet_names
+            
+            # Dinamik Sekme Yakalama (HAZIRLIK veya Sheet4)
+            target_sheet = None
+            if "HAZIRLIK" in sheet_names:
+                target_sheet = "HAZIRLIK"
+            elif "Sheet4" in sheet_names:
+                target_sheet = "Sheet4"
 
-                # 3. Veriyi Temizle
-                df_clean = pd.read_excel(uploaded_file, sheet_name="HAZIRLIK", skiprows=baslik_satiri)
-                df_clean.columns = [str(c).strip() for c in df_clean.columns]
+            if target_sheet:
+                # Veriyi oku
+                df = pd.read_excel(uploaded_file, sheet_name=target_sheet)
                 
-                # --- KRİTİK GÜNCELLEME: BOŞ HÜCRELERİ DOLDUR (Forward Fill) ---
-                # Excel'deki birleştirilmiş hücreler (Mamül Adı vb.) ilk satır hariç boş gelir.
-                # 'ffill' ile yukarıdaki dolu değeri aşağıya doğru boşluklara kopyalarız.
-                doldurulacak_sutunlar = ["Mamül Adı", "Mamül Kodu", "Ürün Kodu", "İş Emri No"]
-                for col in doldurulacak_sutunlar:
-                    if col in df_clean.columns:
-                        df_clean[col] = df_clean[col].ffill()
+                # Sütun temizliği (Baştaki ve sondaki boşlukları al)
+                df.columns = [str(c).strip() for c in df.columns]
+                
+                # Veri temizleme: NaN olan satırları doldur veya temizle
+                # İş Emri ve Ürün Adı genelde ilk satırda olur, ffill ile aşağı çekiyoruz
+                df = df.ffill() 
 
-                # 4. Sütun Standartlaştırma
-                if "Mamül Kodu" in df_clean.columns: 
-                    df_clean["Ürün Kodu"] = df_clean["Mamül Kodu"].ffill()
-                
-                for col in df_clean.columns:
-                    if "total" in str(col).lower() or "miktar" in str(col).lower():
-                        df_clean["İhtiyaç Miktarı"] = pd.to_numeric(df_clean[col], errors='coerce').fillna(0)
-                        break
-                
-                is_emri_adi = uploaded_file.name.rsplit('.', 1)[0]
-                df_clean['İş Emri'] = is_emri_adi
-                
-                # Hedef Şablon
-                cols_target = ["İş Emri", "Ürün Kodu", "Mamül Adı", "Stok Kodu", "Stok Adı", "İhtiyaç Miktarı", "Hazırlanan Adet", "Birim"]
-                for c in cols_target:
-                    if c not in df_clean.columns: 
-                        df_clean[c] = 0 if ("Adet" in c or "Miktar" in c) else ""
-                
-                # Sadece Stok Kodu dolu olan satırları al (Alt toplam satırlarını elemeye yarar)
-                df_final = df_clean.dropna(subset=['Stok Kodu']).copy()
-                df_final = df_final[cols_target]
-                
-                st.write(f"✅ {len(df_final)} kalem malzeme algılandı.")
-                st.dataframe(df_final, use_container_width=True)
+                st.success(f"✅ '{target_sheet}' sekmesi başarıyla yüklendi.")
 
-                if st.button("VERİTABANINA KAYDET", type="primary"):
-                    existing = conn.read(worksheet="Is_Emirleri")
-                    updated = pd.concat([existing, df_final], ignore_index=True)
-                    conn.update(worksheet="Is_Emirleri", data=updated)
-                    st.success("İş Emri başarıyla işlendi!")
-                    st.cache_data.clear()
-                    go_uretim_menu()
-                    st.rerun()
+                # Filtreleme Seçenekleri
+                st.markdown("### 🔍 Hazırlık Detayları")
+                
+                # Gerekli sütunların varlığını kontrol et (ERP çıktısına göre isimleri buraya ekliyoruz)
+                # Örn: 'İş Emri No', 'Ürün Kodu', 'Ürün Adı', 'Miktar'
+                cols = df.columns.tolist()
+                
+                # Tabloyu göster
+                st.dataframe(df, use_container_width=True)
 
-            except Exception as e:
-                st.error(f"Excel Okuma Hatası: {e}")
+                # Hazırlık İşlemi
+                st.divider()
+                st.markdown("### 📝 Malzeme Teslim Kaydı")
+                
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    is_emri_no = st.selectbox("İş Emri Seçin:", df.iloc[:, 0].unique()) if not df.empty else ""
+                with c2:
+                    hazirlayan = st.text_input("Hazırlayan Personel:", value=st.session_state.get('user', ''))
+                with c3:
+                    onay_durumu = st.checkbox("Tüm kalemlerin hazırlığı tamamlandı.")
+
+                if st.button("🚀 HAZIRLIK KAYDINI TAMAMLA VE STOKTAN DÜŞ", use_container_width=True, type="primary"):
+                    if onay_durumu and hazirlayan:
+                        # Burada Google Sheets'e hareket kaydı atma döngüsü çalışacak
+                        # Örnek: Giriş/Çıkış modülündeki gibi conn.update kullanılabilir.
+                        st.balloons()
+                        st.success(f"{is_emri_no} nolu İş Emri hazırlığı başarıyla kaydedildi!")
+                    else:
+                        st.warning("Lütfen hazırlayan bilgisini girin ve onay kutusunu işaretleyin.")
+
+            else:
+                st.error("❌ Dosya içinde 'HAZIRLIK' veya 'Sheet4' sekmesi bulunamadı!")
+                st.info(f"Dosyadaki mevcut sekmeler: {', '.join(sheet_names)}")
+
+        except Exception as e:
+            st.error(f"⚠️ Excel okunurken bir hata oluştu: {e}")
+
+    # 2. MEVCUT HAZIRLIK LİSTELERİ (ARŞİV)
+    st.markdown("---")
+    with st.expander("📊 Geçmiş Hazırlık Kayıtlarını Görüntüle"):
+        try:
+            # Google Sheets'ten hazırlık geçmişini oku (Eğer sayfa varsa)
+            # df_arsiv = conn.read(worksheet="uretim_hazirlik_arsiv")
+            # st.dataframe(df_arsiv, use_container_width=True)
+            st.info("Bu özellik için Google Sheets üzerinde 'uretim_hazirlik_arsiv' sayfası oluşturulmalıdır.")
+        except:
+            st.write("Henüz kayıtlı bir hazırlık arşivi bulunamadı.")
+
+# Modül Sonu

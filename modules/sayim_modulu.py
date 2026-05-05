@@ -35,16 +35,18 @@ def run(conn):
         if st.button("⬅️ GERİ"): go_sayim_menu(); st.rerun()
         st.subheader("📁 Oturum Yönetimi")
         
-        df_sayim_ana = conn.read(worksheet="sayim")
-        df_tamamlanan = conn.read(worksheet="sayim_tamamlanan")
-        
+        try:
+            df_sayim_ana = conn.read(worksheet="sayim")
+        except:
+            st.error("❌ 'sayim' sayfası bulunamadı! Lütfen Google Sheets'te bu isimle bir sayfa açın.")
+            return
+
         if st.session_state.aktif_sayim_adi is None:
             st.markdown("### 🆕 Yeni Sayım Başlat")
             sayim_etiketi = st.text_input("Oturum Adı (Örn: Depo_A):")
             if st.button("🚀 SAYIMI BAŞLAT", use_container_width=True, type="primary"):
                 if sayim_etiketi:
                     yeni_id = f"{sayim_etiketi}_{datetime.now().strftime('%d%m_%H%M')}"
-                    # SNAPSHOT ALMA (Sistem stoğunu o anki haliyle dondurur)
                     df_anlik = conn.read(worksheet="Urun_Listesi")
                     if not df_anlik.empty:
                         df_anlik['Oturum_Adi'] = yeni_id
@@ -65,14 +67,14 @@ def run(conn):
     elif st.session_state.sayim_page == 'giris':
         if st.button("⬅️ GERİ"): go_sayim_menu(); st.rerun()
         if not st.session_state.aktif_sayim_adi:
-            st.warning("Önce oturum başlatın!")
+            st.warning("⚠️ Önce oturum başlatın!")
             return
             
         with st.form("sayim_form"):
             s_adr = st.text_input("📍 Adres:").upper()
             s_kod = st.text_input("📦 Ürün Kodu:").upper()
             s_mik = st.number_input("Miktar:", min_value=0.0)
-            if st.form_submit_button("LİSTEYE EKLE"):
+            if st.form_submit_button("➕ LİSTEYE EKLE"):
                 st.session_state['gecici_sayim_listesi'].append({
                     "Oturum_Adi": st.session_state.aktif_sayim_adi,
                     "Tarih": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -89,42 +91,55 @@ def run(conn):
                 st.session_state['gecici_sayim_listesi'] = []
                 st.success("Kaydedildi!")
 
-    # --- 3. FARK RAPORU (BURASI SENİN İSTEDİĞİN KISIM) ---
+    # --- 3. FARK RAPORU ---
     elif st.session_state.sayim_page == 'rapor':
         if st.button("⬅️ GERİ"): go_sayim_menu(); st.rerun()
         st.subheader("📊 Sayım Fark Raporu")
         
-        df_sayim = conn.read(worksheet="sayim")
-        df_snap = conn.read(worksheet="sayim_snapshot")
+        try:
+            df_sayim = conn.read(worksheet="sayim")
+            df_snap = conn.read(worksheet="sayim_snapshot")
+        except:
+            st.error("❌ Gerekli sayfalar (sayim veya sayim_snapshot) bulunamadı!")
+            return
         
         if not df_sayim.empty:
             oturumlar = df_sayim['Oturum_Adi'].unique().tolist()
             secilen = st.selectbox("Analiz edilecek oturum:", oturumlar)
             
-            # Sayılan ve Sistem verilerini filtrele
             s_data = df_sayim[df_sayim['Oturum_Adi'] == secilen].groupby(['Adres', 'Kod'])['Miktar'].sum().reset_index()
-            sys_data = df_snap[df_snap['Oturum_Adi'] == secilen].groupby(['ADRES', 'kod'])['MIKTAR'].sum().reset_index()
-            sys_data.columns = ['Adres', 'Kod', 'Sistem_Stogu']
+            sys_data = df_snap[df_snap['Oturum_Adi'] == secilen].copy()
             
-            # Karşılaştırma (Merge)
-            fark_df = pd.merge(s_data, sys_data, on=['Adres', 'Kod'], how='outer').fillna(0)
-            fark_df['FARK'] = fark_df['Miktar'] - fark_df['Sistem_Stogu']
-            
-            # Metrikler
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Toplam Sayılan", int(fark_df['Miktar'].sum()))
-            c2.metric("Sistem Beklenen", int(fark_df['Sistem_Stogu'].sum()))
-            c3.metric("Net Fark", int(fark_df['FARK'].sum()), delta=int(fark_df['FARK'].sum()))
-            
-            # Renkli Tablo
-            def color_fark(val):
-                color = 'red' if val < 0 else 'green' if val > 0 else 'black'
-                return f'color: {color}'
-            
-            st.dataframe(fark_df.style.applymap(color_fark, subset=['FARK']), use_container_width=True)
-            
-            # Excel İndir
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                fark_df.to_excel(writer, index=False, sheet_name='Fark_Raporu')
-            st.download_button("📥 RAPORU EXCEL OLARAK İNDİR", output.getvalue(), f"Fark_{secilen}.xlsx")
+            # Sütun isimlerini normalize et (Büyük/Küçük harf duyarlılığı için)
+            sys_data.columns = [c.upper() for c in sys_data.columns]
+            if 'KOD' in sys_data.columns and 'MIKTAR' in sys_data.columns:
+                sys_data = sys_data.groupby(['ADRES', 'KOD'])['MIKTAR'].sum().reset_index()
+                sys_data.columns = ['Adres', 'Kod', 'Sistem_Stogu']
+                
+                fark_df = pd.merge(s_data, sys_data, on=['Adres', 'Kod'], how='outer').fillna(0)
+                fark_df['FARK'] = fark_df['Miktar'] - fark_df['Sistem_Stogu']
+                
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Toplam Sayılan", int(fark_df['Miktar'].sum()))
+                c2.metric("Sistem Beklenen", int(fark_df['Sistem_Stogu'].sum()))
+                c3.metric("Net Fark", int(fark_df['FARK'].sum()), delta=int(fark_df['FARK'].sum()))
+                
+                # --- HATA ÇÖZÜMÜ: applymap -> map dönüşümü ---
+                def color_fark(val):
+                    color = 'red' if val < 0 else 'green' if val > 0 else 'gray'
+                    return f'color: {color}'
+                
+                # Pandas sürümüne göre hem map hem applymap desteği
+                try:
+                    styled_df = fark_df.style.map(color_fark, subset=['FARK'])
+                except AttributeError:
+                    styled_df = fark_df.style.applymap(color_fark, subset=['FARK'])
+                
+                st.dataframe(styled_df, use_container_width=True)
+                
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                    fark_df.to_excel(writer, index=False)
+                st.download_button("📥 EXCEL İNDİR", output.getvalue(), f"Fark_{secilen}.xlsx")
+            else:
+                st.warning("⚠️ Snapshot verisinde 'KOD' veya 'MIKTAR' sütunu bulunamadı.")

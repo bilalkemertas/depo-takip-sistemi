@@ -1,74 +1,58 @@
 import streamlit as st
+from streamlit_gsheets import GSheetsConnection
 
-# ---------------- CORE ----------------
-from core import db
+from modules import stok_islemleri, uretim_hazirlik, sayim_modulu, blok_kesim
 
-# ---------------- MODULES ----------------
-from modules import (
-    stok_islemleri,
-    uretim_hazirlik,
-    sayim_modulu,
-    blok_kesim
-)
-
-# ---------------- INIT DB ----------------
-db.init_db()
-
-# ---------------- PAGE CONFIG ----------------
+# ---------------------------
+# SAYFA AYARLARI
+# ---------------------------
 st.set_page_config(
-    page_title="Depo Otomasyon v3 - SQLite",
+    page_title="Depo Otomasyon v2.0",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# ---------------- SESSION INIT ----------------
-if "user" not in st.session_state:
-    st.session_state.user = "admin"  # şimdilik basit auth
+# ---------------------------
+# GOOGLE SHEETS BAĞLANTISI
+# ---------------------------
+conn = st.connection("gsheets", type=GSheetsConnection)
 
-if "page" not in st.session_state:
-    st.session_state.page = "home"
-
-
-# ---------------- SIDEBAR MENU ----------------
-st.sidebar.title("📦 WMS CONTROL CENTER")
+# ---------------------------
+# MENU
+# ---------------------------
+st.sidebar.title("📦 DEPO KONTROL MERKEZİ")
 st.sidebar.markdown("---")
 
 page = st.sidebar.radio(
-    "İşlem Seçiniz",
+    "İşlem Seçiniz:",
     [
         "🏠 Ana Sayfa",
-        "📊 Stok Giriş / Çıkış",
-        "↔️ Depo Transfer",
+        "📊 Stok Giriş/Çıkış",
+        "↔️ Depo İçi Transfer",
         "🏗️ Üretim Hazırlık",
         "📝 Sayım Modülü",
-        "✂️ Blok Kesim"
+        "✂️ BLOK KESİM"
     ]
 )
 
-st.sidebar.markdown("---")
-st.sidebar.info(f"Kullanıcı: {st.session_state.user}")
-
-
-# ---------------- ROUTER ----------------
+# ---------------------------
+# ROUTER
+# ---------------------------
 if page == "🏠 Ana Sayfa":
-    st.title("📦 SQLite WMS Sistemine Hoş Geldiniz")
-    st.write("Modül seçerek işlemlere başlayabilirsiniz.")
+    st.title("Depo Yönetim Paneli")
+    st.info("İşlem için sol menüyü kullanın.")
 
-    # hızlı özet
-    df = db.read("stok")
-    st.metric("Toplam Stok Kalemi", len(df))
+elif page == "📊 Stok Giriş/Çıkış":
+    stok_islemleri.run_islem(conn)
 
-elif page == "📊 Stok Giriş / Çıkış":
-    stok_islemleri.run()
-
-elif page == "↔️ Depo Transfer":
-    stok_islemleri.run_transfer()
+elif page == "↔️ Depo İçi Transfer":
+    stok_islemleri.run_transfer(conn)
 
 elif page == "🏗️ Üretim Hazırlık":
-    uretim_hazirlik.run()
+    uretim_hazirlik.run(conn)
 
 elif page == "📝 Sayım Modülü":
-    sayim_modulu.run()
+    sayim_modulu.run(conn)
 
-elif page == "✂️ Blok Kesim":
-    blok_kesim.run()
+elif page == "✂️ BLOK KESİM":
+    blok_kesim.run_blok_kesim(conn)

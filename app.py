@@ -1,7 +1,7 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
-from modules import stok_islemleri, uretim_hazirlik, sayim_modulu
+from modules import stok_islemleri, uretim_hazirlik, sayim_modulu, blok_kesim
 
 # --- VERİTABANI BAŞLATICI ---
 def init_db():
@@ -21,24 +21,25 @@ st.set_page_config(page_title="WMS Enterprise", page_icon="🏢", layout="wide",
 
 st.markdown("""
     <style>
-        /* Kurumsal ERP Hissiyatı İçin CSS */
+        /* Kurumsal ERP (SAP Fiori / Oracle) Hissiyatı İçin CSS */
         .block-container { padding: 1rem !important; max-width: 800px; margin: 0 auto; }
         header { visibility: hidden; }
         footer { visibility: hidden; }
         
+        /* Genel Font ve Arka Plan */
         html, body, [class*="css"] {
             font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             background-color: #f4f5f7;
         }
         
-        /* Ana Menü Karo (Tile) Tasarımı (SADECE PRIMARY BUTONLAR) */
+        /* Ana Menü Karo (Tile) Tasarımı */
         button[kind="primary"] {
             width: 100%;
             height: 110px;
             border-radius: 10px;
             background-color: #ffffff;
             color: #0b3c5d;
-            border: 2px solid #dcdcdc;
+            border: 1px solid #dcdcdc;
             box-shadow: 0 4px 6px rgba(0,0,0,0.05);
             font-size: 16px;
             font-weight: bold;
@@ -55,11 +56,20 @@ st.markdown("""
             transform: translateY(0);
         }
         
-        /* İkincil Butonlar (Ana Ekran, Çıkış vb.) */
-        button[kind="secondary"] {
-            border-radius: 6px;
-            font-weight: 600;
+        /* Kurumsal Header */
+        .erp-header {
+            background-color: #0b3c5d;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
+        .erp-title { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: 1px; }
+        .erp-user { margin: 0; font-size: 14px; opacity: 0.9; }
         
         /* Çıkış Butonu Özel Ayarı */
         .logout-box {
@@ -90,7 +100,7 @@ if st.session_state.user is None:
                 else: 
                     st.error("Yetki Reddedildi.")
 else:
-    # --- KURUMSAL HEADER (ÇIKIŞ BUTONLU) ---
+    # --- KURUMSAL HEADER ---
     c_title, c_user, c_logout = st.columns([5, 3, 1])
     with c_title:
         st.markdown("<h3 style='color: #0b3c5d; margin-top: 5px;'>🏢 WMS Enterprise</h3>", unsafe_allow_html=True)
@@ -98,13 +108,12 @@ else:
         st.markdown(f"<p style='text-align: right; margin-top: 15px; color: #666; font-weight: 500;'>👤 {st.session_state.user}</p>", unsafe_allow_html=True)
     with c_logout:
         st.markdown("<div class='logout-box'>", unsafe_allow_html=True)
-        # International power symbol used for logout
         if st.button("⏻", help="Oturumu Kapat"):
             st.session_state.user = None
             st.session_state.current_module = "home"
             st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
-    
+
     st.markdown("<hr style='margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
 
     # --- YÖNLENDİRME MOTORU (DASHBOARD) ---
@@ -113,12 +122,15 @@ else:
         c1, c2 = st.columns(2)
         
         with c1:
-            # Type primary tetiklenince CSS'teki Tile tasarımı devreye girer
             if st.button("📦\nStok İşlemleri", type="primary"):
                 st.session_state.current_module = "stok"
                 st.rerun()
             if st.button("🏗️\nÜretim Hazırlık", type="primary"):
                 st.session_state.current_module = "uretim"
+                st.rerun()
+            # Blok Kesim Modülü Eklendi
+            if st.button("✂️\nBlok Kesim", type="primary"):
+                st.session_state.current_module = "blok"
                 st.rerun()
                 
         with c2:
@@ -139,6 +151,8 @@ else:
             uretim_hazirlik.run()
         elif st.session_state.current_module == "sayim":
             sayim_modulu.run()
+        elif st.session_state.current_module == "blok":
+            blok_kesim.run() # Modülün içindeki fonksiyon adının run() olduğunu varsayıyorum.
             
         # Alt Kısımda Küçük Ana Ekran Butonu
         st.markdown("<br><hr style='margin-bottom: 10px;'>", unsafe_allow_html=True)

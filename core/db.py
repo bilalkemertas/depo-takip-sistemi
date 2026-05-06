@@ -1,6 +1,8 @@
 import sqlite3
 import pandas as pd
 from datetime import datetime
+import streamlit as st
+from streamlit_gsheets import GSheetsConnection
 
 DB = "wms.db"
 
@@ -106,3 +108,50 @@ def log(user, action, detail):
 
     c.commit()
     c.close()
+
+# ---------------- DRIVE EXCEL (GSHEETS) EŞİTLEME ----------------
+def get_drive_conn():
+    return st.connection("gsheets", type=GSheetsConnection)
+
+def sync_to_drive():
+    """SQLite veritabanındaki verileri Google Drive'a gönderir."""
+    g_conn = get_drive_conn()
+    
+    # SQLite Tabloları ve Drive Sekme İsimleri
+    tablolar = {
+        "stok": "Stok",
+        "hareketler": "Hareketler",
+        "blokeli_stok": "Blokeli_Stok",
+        "sayim_snapshot": "Sayim_Snapshot",
+        "audit_log": "Audit_Log"
+    }
+    
+    for sql_table, sheet_name in tablolar.items():
+        try:
+            df = read(sql_table)
+            if not df.empty:
+                g_conn.update(worksheet=sheet_name, data=df)
+        except Exception as e:
+            pass # Eğer Drive dosyasında o isimde sekme yoksa hata vermeden diğerine geçer
+
+def sync_from_drive():
+    """Google Drive'daki verileri SQLite'a indirir (Tam Eşitleme)."""
+    g_conn = get_drive_conn()
+    
+    tablolar = {
+        "Stok": "stok",
+        "Hareketler": "hareketler",
+        "Blokeli_Stok": "blokeli_stok",
+        "Sayim_Snapshot": "sayim_snapshot",
+        "Audit_Log": "audit_log"
+    }
+    
+    for sheet_name, sql_table in tablolar.items():
+        try:
+            df = g_conn.read(worksheet=sheet_name, ttl=0)
+            if isinstance(df, pd.DataFrame) and not df.empty:
+                # Başlıklardaki olası boşlukları temizle
+                df.columns = [str(c).strip() for c in df.columns]
+                write(sql_table, df)
+        except Exception as e:
+            pass

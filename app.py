@@ -24,33 +24,71 @@ def init_db():
 
 init_db()
 
-# --- SAYFA AYARLARI ---
-st.set_page_config(page_title="Depo Kontrol v2.0", page_icon="📦", layout="wide")
+# --- SAYFA AYARLARI VE CSS TEMA ---
+st.set_page_config(page_title="Depo Kontrol v2.0", page_icon="📦", layout="wide", initial_sidebar_state="collapsed")
+
+# Arayüzü profesyonelleştiren ve terminal ekranına uyduran CSS
+st.markdown("""
+    <style>
+        /* Terminal ekranı için kenar boşluklarını daralt */
+        .block-container {
+            padding-top: 1rem;
+            padding-bottom: 1rem;
+            padding-left: 0.5rem;
+            padding-right: 0.5rem;
+        }
+        /* Genel font ayarı */
+        html, body, [class*="css"] {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        /* Dokunmatik ekran için butonları büyüt ve köşeleri yuvarlat */
+        div.stButton > button {
+            border-radius: 8px;
+            font-weight: 600;
+            height: 3rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: all 0.2s ease;
+        }
+        div.stButton > button:active {
+            transform: scale(0.98);
+        }
+        /* Varsayılan header ve footer gizle */
+        header {visibility: hidden;}
+        footer {visibility: hidden;}
+    </style>
+""", unsafe_allow_html=True)
 
 if 'user' not in st.session_state: st.session_state.user = None
 
 # --- LOGİN VE MENÜ ---
 if st.session_state.user is None:
-    st.title("🔐 Depo Giriş")
+    st.markdown("<h3 style='text-align: center;'>🔐 Depo Giriş</h3>", unsafe_allow_html=True)
     with st.form("login"):
         u = st.text_input("Kullanıcı")
         p = st.text_input("Şifre", type="password")
-        if st.form_submit_button("Giriş"):
+        if st.form_submit_button("Giriş Yap", use_container_width=True):
             if u in st.secrets["users"] and st.secrets["users"][u] == p:
                 st.session_state.user = u
                 st.rerun()
-            else: st.error("Hatalı Giriş!")
+            else: 
+                st.error("Hatalı Giriş!")
 else:
-    menu = st.sidebar.radio("İşlem:", ["🏠 Ana Sayfa", "📊 Stok Giriş/Çıkış", "↔️ Depo İçi Transfer", "🏗️ Üretim Hazırlık", "📝 Sayım Modülü"])
-    
-    if st.sidebar.button("🚪 Çıkış"):
-        st.session_state.user = None
-        st.rerun()
+    # --- EL TERMİNALİ İÇİN ÜST MENÜ ---
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        menu = st.selectbox("Modül Seçiniz:", ["🏠 Ana Sayfa", "📊 Stok Giriş/Çıkış", "↔️ Depo İçi Transfer", "🏗️ Üretim Hazırlık", "📝 Sayım Modülü"], label_visibility="collapsed")
+    with col2:
+        if st.button("🚪 Çıkış", use_container_width=True):
+            st.session_state.user = None
+            st.rerun()
+
+    st.markdown("---")
 
     # --- MODÜL ÇAĞRILARI (Parametresiz) ---
     if menu == "🏠 Ana Sayfa":
-        st.title("📦 Depo Kontrol Merkezi")
-        st.success(f"Hoş geldin {st.session_state.user}")
+        st.markdown("#### 📦 Depo Kontrol Merkezi")
+        st.success(f"Hoş geldin, {st.session_state.user}")
+        st.info("İşlem yapmak için üstteki menüyü kullanabilirsiniz.")
     
     elif menu == "📊 Stok Giriş/Çıkış":
         stok_islemleri.run_islem()

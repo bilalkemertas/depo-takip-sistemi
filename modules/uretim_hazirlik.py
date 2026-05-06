@@ -20,7 +20,7 @@ def run():
             sheet_names = excel_file.sheet_names
             
             # Dinamik Sekme Yakalama
-            target_sheet = "HAZIRLIK" if "HAZIRLIK" in sheet_names else "Sheet4" if "Sheet4" in sheet_names else None
+            target_sheet = "Hazırlık" if "Hazırlık" in sheet_names else "Sheet4" if "Sheet4" in sheet_names else None
 
             if target_sheet:
                 df_raw = pd.read_excel(uploaded_file, sheet_name=target_sheet, header=None)
@@ -61,7 +61,7 @@ def run():
                 else:
                     st.error("❌ Excel dosyasında 'stok kodu' başlığı bulunamadı. Formatı kontrol edin.")
             else:
-                st.error("❌ Dosya içinde 'HAZIRLIK' veya 'Sheet4' sekmesi bulunamadı.")
+                st.error("❌ Dosya içinde 'Hazırlık' veya 'Sheet4' sekmesi bulunamadı.")
         except Exception as e:
             st.error(f"Hata: {e}")
 

@@ -5,9 +5,9 @@ from datetime import datetime
 
 def get_katalog():
     try:
-        df = veritabani.read("urun_listesi")
-        if not df.empty:
-            return df.apply(lambda x: f"{x['kod']} | {x['isim']}", axis=1).tolist()
+        df_katalog = db.read("urun_listesi")
+        if not df_katalog.empty:
+            return df_katalog.apply(lambda x: f"{x['kod']} | {x['isim']}", axis=1).tolist()
         return []
     except:
         return []
@@ -38,8 +38,8 @@ def run_islem():
     # --- SENKRONİZASYON BUTONU ---
     if st.button("🔄 Drive'dan Katalog İndir", type="secondary"):
         with st.spinner("Katalog güncelleniyor..."):
-            veritabani.init_db()
-            veritabani.sync_from_drive()
+            db.init_db()
+            db.sync_from_drive()
         st.success("Veriler Drive'dan SQLite'a çekildi!")
         st.rerun()
 
@@ -127,8 +127,8 @@ def run_islem():
 
         if st.button("🚀 TÜM HAREKETLERİ VERİTABANINA İŞLE", use_container_width=True, type="primary"):
             try:
-                df_stok = veritabani.read("stok")
-                df_hareketler = veritabani.read("hareketler")
+                df_stok = db.read("stok")
+                df_hareketler = db.read("hareketler")
             except Exception as e:
                 st.error(f"Veritabanı okuma hatası: {e}")
                 return
@@ -136,7 +136,6 @@ def run_islem():
             islem_zamani = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             personel = st.session_state.user if 'user' in st.session_state else "Sistem"
             
-            # Sütun isimlerini güvene al
             if 'kod' not in df_stok.columns: df_stok['kod'] = ""
             if 'adres' not in df_stok.columns: df_stok['adres'] = ""
             if 'miktar' not in df_stok.columns: df_stok['miktar'] = 0.0
@@ -185,12 +184,11 @@ def run_islem():
                     df_hareketler = pd.concat([df_hareketler, pd.DataFrame([yeni_hareket_satiri])], ignore_index=True)
                     kaydedilen_sayi += 1
 
-            veritabani.write("stok", df_stok)
-            veritabani.write("hareketler", df_hareketler)
+            db.write("stok", df_stok)
+            db.write("hareketler", df_hareketler)
             
-            # Drive'a senkronize et ve Logla
-            veritabani.sync_to_drive()
-            veritabani.log(personel, "Toplu Stok İşlemi", f"{kaydedilen_sayi} kalem işlendi.")
+            db.sync_to_drive()
+            db.log(personel, "Toplu Stok İşlemi", f"{kaydedilen_sayi} kalem işlendi.")
             
             st.session_state["islem_basarili"] = True
             st.session_state["mesaj"] = f"✅ {kaydedilen_sayi} kalem işlendi ve buluta aktarıldı!"

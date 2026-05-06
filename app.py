@@ -1,7 +1,7 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
-from modules import stok_islemleri, uretim_hazirlik, sayim_modulu, blok_kesim
+from modules import stok_islemleri, uretim_hazirlik, sayim_modulu, blok_kesim, teslim_alma
 
 # --- VERİTABANI BAŞLATICI ---
 def init_db():
@@ -11,6 +11,8 @@ def init_db():
     cursor.execute('''CREATE TABLE IF NOT EXISTS Stok (Adres TEXT, Kod TEXT, İsim TEXT, Birim TEXT, Miktar REAL, Durum TEXT)''')
     cursor.execute('''CREATE TABLE IF NOT EXISTS Hareketler (Tarih TEXT, İşlem TEXT, Kod TEXT, İsim TEXT, Adres TEXT, Miktar REAL, Personel TEXT)''')
     cursor.execute('''CREATE TABLE IF NOT EXISTS Is_Emirleri ("İş Emri" TEXT, "Ürün Kodu" TEXT, "Mamül Adı" TEXT, "Stok Kodu" TEXT, "Stok Adı" TEXT, "İhtiyaç Miktarı" REAL, "Hazırlanan Adet" REAL, Birim TEXT)''')
+    # Mal Kabul işlemleri için yeni tablo (İrsaliye ve Sipariş detaylarını tutmak için)
+    cursor.execute('''CREATE TABLE IF NOT EXISTS Mal_Kabul (Tarih TEXT, Irsaliye_No TEXT, Siparis_No TEXT, Tedarikci TEXT, Kod TEXT, Isim TEXT, Miktar REAL, Adres TEXT, Personel TEXT)''')
     conn.commit()
     conn.close()
 
@@ -128,14 +130,14 @@ else:
             if st.button("🏗️\nÜretim Hazırlık", type="primary"):
                 st.session_state.current_module = "uretim"
                 st.rerun()
-            # Blok Kesim Modülü Eklendi
             if st.button("✂️\nBlok Kesim", type="primary"):
                 st.session_state.current_module = "blok"
                 st.rerun()
                 
         with c2:
-            if st.button("↔️\nDepo Transfer", type="primary"):
-                st.session_state.current_module = "transfer"
+            # Depo Transfer yerine Teslim Alma eklendi
+            if st.button("📥\nTeslim Alma", type="primary"):
+                st.session_state.current_module = "teslim"
                 st.rerun()
             if st.button("📋\nSayım Modülü", type="primary"):
                 st.session_state.current_module = "sayim"
@@ -145,14 +147,14 @@ else:
         # Seçili Modülü Çalıştır
         if st.session_state.current_module == "stok":
             stok_islemleri.run_islem()
-        elif st.session_state.current_module == "transfer":
-            stok_islemleri.run_transfer()
+        elif st.session_state.current_module == "teslim":
+            teslim_alma.run()
         elif st.session_state.current_module == "uretim":
             uretim_hazirlik.run()
         elif st.session_state.current_module == "sayim":
             sayim_modulu.run()
         elif st.session_state.current_module == "blok":
-            blok_kesim.run() # Modülün içindeki fonksiyon adının run() olduğunu varsayıyorum.
+            blok_kesim.run()
             
         # Alt Kısımda Küçük Ana Ekran Butonu
         st.markdown("<br><hr style='margin-bottom: 10px;'>", unsafe_allow_html=True)

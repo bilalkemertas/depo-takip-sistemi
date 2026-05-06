@@ -1,10 +1,17 @@
 import streamlit as st
 import pandas as pd
-import io
+import sqlite3
 from datetime import datetime
 
-def run(conn):
+def get_db_connection():
+    """SQLite veritabanı bağlantısını kurar."""
+    conn = sqlite3.connect('depo.db', check_same_thread=False)
+    return conn
+
+def run():
     st.subheader("🏭 Üretim Hazırlık Ekranı")
+    st.markdown("---")
+
     uploaded_file = st.file_uploader("İş Emri Excel Dosyasını Yükleyin", type=['xlsx'])
 
     if uploaded_file:
@@ -12,7 +19,7 @@ def run(conn):
             excel_file = pd.ExcelFile(uploaded_file)
             sheet_names = excel_file.sheet_names
             
-            # Sekme Yakalama
+            # Dinamik Sekme Yakalama
             target_sheet = "HAZIRLIK" if "HAZIRLIK" in sheet_names else "Sheet4" if "Sheet4" in sheet_names else None
 
             if target_sheet:
@@ -32,6 +39,7 @@ def run(conn):
                     is_emri_adi = uploaded_file.name.rsplit('.', 1)[0]
                     df_clean['İş Emri'] = is_emri_adi
                     
+                    # Veritabanına gidecek hedef sütunlar
                     cols_target = ["İş Emri", "Ürün Kodu", "Mamül Adı", "Stok Kodu", "Stok Adı", "İhtiyaç Miktarı", "Hazırlanan Adet", "Birim"]
                     for c in cols_target:
                         if c not in df_clean.columns: df_clean[c] = 0 if ("Adet" in c or "Miktar" in c) else ""
@@ -39,13 +47,31 @@ def run(conn):
                     df_final = df_clean.dropna(subset=['Stok Kodu'])[cols_target]
                     st.dataframe(df_final, use_container_width=True)
 
-                    if st.button("VERİTABANINA KAYDET", type="primary"):
-                        existing = conn.read(worksheet="Is_Emirleri")
-                        conn.update(worksheet="Is_Emirleri", data=pd.concat([existing, df_final], ignore_index=True))
-                        st.success("İş Emri Kaydedildi!")
+                    if st.button("🚀 VERİTABANINA KAYDET", type="primary"):
+                        db = get_db_connection()
+                        try:
+                            # SQLite veritabanına ekleme (append) işlemi
+                            df_final.to_sql("Is_Emirleri", db, if_exists="append", index=False)
+                            st.success(f"✅ {is_emri_adi} başarıyla sisteme kaydedildi!")
+                            st.balloons()
+                        except Exception as sql_e:
+                            st.error(f"Veritabanına yazılırken hata: {sql_e}")
+                        finally:
+                            db.close()
                 else:
-                    st.error("❌ 'stok kodu' başlığı bulunamadı.")
+                    st.error("❌ Excel dosyasında 'stok kodu' başlığı bulunamadı. Formatı kontrol edin.")
             else:
-                st.error("❌ 'HAZIRLIK' veya 'Sheet4' sekmesi bulunamadı.")
+                st.error("❌ Dosya içinde 'HAZIRLIK' veya 'Sheet4' sekmesi bulunamadı.")
         except Exception as e:
             st.error(f"Hata: {e}")
+
+    # Alt kısımda geçmiş iş emirlerini göstermek istersen (Opsiyonel)
+    st.markdown("---")
+    with st.expander("📊 Kayıtlı İş Emirlerini Görüntüle"):
+        try:
+            db = get_db_connection()
+            arsiv_df = pd.read_sql("SELECT * FROM Is_Emirleri", db)
+            st.dataframe(arsiv_df, use_container_width=True)
+            db.close()
+        except:
+            st.info("Henüz kaydedilmiş bir iş emri bulunmuyor.")

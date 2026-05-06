@@ -3,76 +3,55 @@ import sqlite3
 import pandas as pd
 from modules import stok_islemleri, uretim_hazirlik, sayim_modulu
 
+# --- VERİTABANI BAŞLATICI ---
+def init_db():
+    conn = sqlite3.connect('depo.db')
+    cursor = conn.cursor()
+    # Urun_Listesi Tablosu
+    cursor.execute('''CREATE TABLE IF NOT EXISTS Urun_Listesi 
+                      (kod TEXT PRIMARY KEY, isim TEXT, BIRIM TEXT, ADRES TEXT)''')
+    # Stok Tablosu
+    cursor.execute('''CREATE TABLE IF NOT EXISTS Stok 
+                      (Adres TEXT, Kod TEXT, İsim TEXT, Birim TEXT, Miktar REAL, Durum TEXT)''')
+    # Hareketler Tablosu
+    cursor.execute('''CREATE TABLE IF NOT EXISTS Hareketler 
+                      (Tarih TEXT, İşlem TEXT, Kod TEXT, İsim TEXT, Adres TEXT, Miktar REAL, Personel TEXT)''')
+    # İş Emirleri Tablosu
+    cursor.execute('''CREATE TABLE IF NOT EXISTS Is_Emirleri 
+                      ("İş Emri" TEXT, "Ürün Kodu" TEXT, "Mamül Adı" TEXT, "Stok Kodu" TEXT, "Stok Adı" TEXT, "İhtiyaç Miktarı" REAL, "Hazırlanan Adet" REAL, Birim TEXT)''')
+    conn.commit()
+    conn.close()
+
+init_db()
+
 # --- SAYFA AYARLARI ---
-st.set_page_config(
-    page_title="Depo Kontrol Merkezi v2.0",
-    page_icon="📦",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+st.set_page_config(page_title="Depo Kontrol v2.0", page_icon="📦", layout="wide")
 
-# --- OTURUM YÖNETİMİ ---
-# Kullanıcı giriş yapmamışsa login ekranına yönlendir
-if 'user' not in st.session_state:
-    st.session_state.user = None
+if 'user' not in st.session_state: st.session_state.user = None
 
-if 'page' not in st.session_state:
-    st.session_state.page = "Ana Sayfa"
-
-# --- LOGİN SİSTEMİ (Basit) ---
-def login():
-    st.title("🔐 Depo Giriş")
-    with st.form("login_form"):
-        username = st.text_input("Kullanıcı Adı")
-        password = st.text_input("Şifre", type="password")
-        submit = st.form_submit_button("Giriş Yap")
-        
-        if submit:
-            # Secrets içindeki kullanıcı bilgilerini kontrol et
-            if username in st.secrets["users"] and st.secrets["users"][username] == password:
-                st.session_state.user = username
-                st.rerun()
-            else:
-                st.error("Hatalı kullanıcı adı veya şifre!")
-
-# --- ANA UYGULAMA ---
+# --- LOGİN VE MENÜ ---
 if st.session_state.user is None:
-    login()
+    st.title("🔐 Depo Giriş")
+    with st.form("login"):
+        u = st.text_input("Kullanıcı")
+        p = st.text_input("Şifre", type="password")
+        if st.form_submit_button("Giriş"):
+            if u in st.secrets["users"] and st.secrets["users"][u] == p:
+                st.session_state.user = u
+                st.rerun()
+            else: st.error("Hatalı Giriş!")
 else:
-    # --- YAN MENÜ (SIDEBAR) ---
-    st.sidebar.title(f"👤 Merhaba, {st.session_state.user}")
-    st.sidebar.markdown("---")
+    menu = st.sidebar.radio("İşlem:", ["🏠 Ana Sayfa", "📊 Stok Giriş/Çıkış", "↔️ Depo İçi Transfer", "🏗️ Üretim Hazırlık", "📝 Sayım Modülü"])
     
-    menu = st.sidebar.radio(
-        "İşlem Seçiniz:",
-        [
-            "🏠 Ana Sayfa", 
-            "📊 Stok Giriş/Çıkış", 
-            "↔️ Depo İçi Transfer", 
-            "🏗️ Üretim Hazırlık", 
-            "📝 Sayım Modülü"
-        ]
-    )
-    
-    st.sidebar.markdown("---")
-    if st.sidebar.button("🚪 Çıkış Yap"):
+    if st.sidebar.button("🚪 Çıkış"):
         st.session_state.user = None
         st.rerun()
 
-    # --- MODÜL YÖNLENDİRMELERİ ---
-    # SQLite yapısına geçtiğimiz için artık 'conn' parametresi göndermiyoruz
-    
+    # --- MODÜL ÇAĞRILARI (Parametresiz) ---
     if menu == "🏠 Ana Sayfa":
         st.title("📦 Depo Kontrol Merkezi")
-        st.info(f"Hoş geldin Patron! Bugün depo operasyonlarını yönetmeye hazırsın.")
-        
-        # Hızlı istatistikler buraya eklenebilir
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("Aktif Oturum", st.session_state.get('aktif_sayim_adi', 'Yok'))
-        with col2:
-            st.write("Depo doluluk oranı ve kritik stok uyarıları yakında burada olacak.")
-
+        st.success(f"Hoş geldin {st.session_state.user}")
+    
     elif menu == "📊 Stok Giriş/Çıkış":
         stok_islemleri.run_islem()
 
@@ -84,6 +63,3 @@ else:
 
     elif menu == "📝 Sayım Modülü":
         sayim_modulu.run()
-
-# --- ALT BİLGİ ---
-st.sidebar.caption("v2.0.1 - SQLite Edition")

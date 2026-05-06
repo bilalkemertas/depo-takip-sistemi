@@ -35,12 +35,19 @@ def run_islem():
         del st.session_state["islem_basarili"]
         del st.session_state["mesaj"]
 
-    # --- SENKRONİZASYON BUTONU ---
+   # --- YENİ AKILLI SENKRONİZASYON BUTONU ---
     if st.button("🔄 Drive'dan Katalog İndir", type="secondary"):
         with st.spinner("Katalog güncelleniyor..."):
             db.init_db()
-            db.sync_from_drive()
-        st.success("Veriler Drive'dan SQLite'a çekildi!")
+            basarili, hatali = db.sync_from_drive()
+        
+        if basarili:
+            st.success(f"✅ Başarıyla İnenler: {', '.join(basarili)}")
+        if hatali:
+            st.error(f"❌ İndirilemeyenler: {', '.join(hatali)}")
+            st.info("💡 Lütfen Drive Excel dosyanızdaki sekme isimlerinin (örn: 'Urun_Listesi') birebir aynı olduğundan emin olun.")
+        
+        # st.rerun() <--- BU SATIRI TAMAMEN SİLDİK
         st.rerun()
 
     st.subheader("📊 Stok Hareketleri (Toplu İşlem)")

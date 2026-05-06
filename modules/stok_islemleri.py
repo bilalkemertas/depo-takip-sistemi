@@ -1,5 +1,5 @@
 import streamlit as st
-import veritabani
+from core import db
 import pandas as pd
 from datetime import datetime
 

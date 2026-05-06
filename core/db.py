@@ -10,16 +10,47 @@ def init_db():
     conn = get_conn()
     c = conn.cursor()
 
-    # STOK HAREKETLERİ
+    # MALZEME MASTER
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS malzemeler (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kod TEXT UNIQUE,
+        ad TEXT,
+        birim TEXT
+    )
+    """)
+
+    # LOKASYON
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS lokasyonlar (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kod TEXT UNIQUE,
+        aciklama TEXT
+    )
+    """)
+
+    # HAREKETLER
     c.execute("""
     CREATE TABLE IF NOT EXISTS hareketler (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         tarih TEXT,
-        urun TEXT,
+        malzeme TEXT,
         miktar REAL,
-        islem TEXT,
+        hareket_tipi TEXT,
         kaynak TEXT,
-        hedef TEXT
+        hedef TEXT,
+        referans TEXT
+    )
+    """)
+
+    # REZERVASYON
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS rezervasyon (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        malzeme TEXT,
+        miktar REAL,
+        lokasyon TEXT,
+        durum TEXT
     )
     """)
 
@@ -28,26 +59,24 @@ def init_db():
     CREATE TABLE IF NOT EXISTS sayim (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         tarih TEXT,
-        urun TEXT,
-        miktar REAL
+        malzeme TEXT,
+        lokasyon TEXT,
+        sayilan REAL
     )
     """)
 
     conn.commit()
     conn.close()
 
-def insert(table, data: dict):
+# --- GENERIC ---
+def execute(query, params=()):
     conn = get_conn()
-    keys = ','.join(data.keys())
-    qmarks = ','.join(['?'] * len(data))
-    values = tuple(data.values())
-
-    conn.execute(f"INSERT INTO {table} ({keys}) VALUES ({qmarks})", values)
+    conn.execute(query, params)
     conn.commit()
     conn.close()
 
-def read(table):
+def fetch(query, params=()):
     conn = get_conn()
-    df = pd.read_sql(f"SELECT * FROM {table}", conn)
+    df = pd.read_sql(query, conn, params=params)
     conn.close()
     return df

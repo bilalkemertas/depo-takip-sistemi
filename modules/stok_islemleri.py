@@ -5,6 +5,9 @@ from datetime import datetime
 
 def get_katalog():
     try:
+        # --- HAYAT KURTARAN SATIR: Tablo yoksa önce yarat! ---
+        db.init_db()
+        
         df_katalog = db.read("urun_listesi")
         if not df_katalog.empty:
             df_katalog.columns = [str(c).strip().upper() for c in df_katalog.columns]
@@ -21,6 +24,8 @@ def get_katalog():
     except Exception as e:
         st.error(f"Katalog okuma hatası: {e}")
         return []
+
+# ... (Aşağıdaki kodlar aynı kalacak) ...
 
 def clear_form():
     st.session_state.reset_form = True

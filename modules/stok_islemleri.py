@@ -64,48 +64,40 @@ def run_islem(conn):
     except Exception as e:
         st.error(f"Hata: {e}")
 
+import streamlit as st
+import pandas as pd
+
 def run_transfer(conn):
 
     st.title("↔️ Depo İçi Transfer")
 
-    try:
-        # ÖRNEK: mevcut stok verisini çek
-        df = conn.read(worksheet="stok")
+    # VERİYİ OKU
+    df = conn.read(worksheet="stok")
 
-        st.subheader("Mevcut Stok")
-        st.dataframe(df)
+    st.dataframe(df)
 
-        # Transfer giriş alanları
-        col1, col2, col3 = st.columns(3)
+    urun = st.text_input("Ürün Kodu")
+    kaynak = st.text_input("Kaynak Lokasyon")
+    hedef = st.text_input("Hedef Lokasyon")
+    miktar = st.number_input("Miktar", min_value=1)
 
-        with col1:
-            urun = st.text_input("Ürün Kodu")
+    if st.button("Transfer Yap"):
 
-        with col2:
-            kaynak = st.text_input("Kaynak Lokasyon")
+        try:
+            # filtre
+            mask = (df["urun"] == urun) & (df["lokasyon"] == kaynak)
 
-        with col3:
-            hedef = st.text_input("Hedef Lokasyon")
+            if mask.any():
 
-        miktar = st.number_input("Miktar", min_value=1, step=1)
+                df.loc[mask, "lokasyon"] = hedef
 
-        if st.button("Transfer Yap"):
-
-            if urun and kaynak and hedef:
-
-                # filtreleme (örnek mantık)
-                df.loc[
-                    (df["urun"] == urun) & (df["lokasyon"] == kaynak),
-                    "lokasyon"
-                ] = hedef
-
-                # Google Sheets'e yaz
-                conn.update(worksheet="stok", data=df)
+                # 🔥 KRİTİK FIX: response'u KULLANMA
+                conn.write(worksheet="stok", data=df)
 
                 st.success("Transfer başarılı")
 
             else:
-                st.warning("Tüm alanları doldurun")
+                st.error("Ürün / lokasyon bulunamadı")
 
-    except Exception as e:
-        st.error(f"Sistem hatası: {e}")
+        except Exception as e:
+            st.error(f"Transfer hatası: {e}")

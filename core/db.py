@@ -25,9 +25,9 @@ def init_db():
     )
     """)
 
-    # Ürün Listesi Tablosu Eklendi
+    # Ürün Listesi Tablosu
     cur.execute("""
-    CREATE TABLE IF NOT EXISTS Urun_Listesi (
+    CREATE TABLE IF NOT EXISTS urun_listesi (
         kod TEXT PRIMARY KEY,
         isim TEXT,
         birim TEXT,
@@ -123,7 +123,7 @@ def sync_to_drive():
     
     tablolar = {
         "stok": "Stok",
-        "Urun_Listesi": "Urun_Listesi",
+        "urun_listesi": "Urun_Listesi",
         "hareketler": "Hareketler",
         "blokeli_stok": "Blokeli_Stok",
         "sayim_snapshot": "Sayim_Snapshot",
@@ -143,7 +143,7 @@ def sync_from_drive():
     
     tablolar = {
         "Stok": "stok",
-        "Urun_Listesi": "Urun_Listesi",
+        "Urun_Listesi": "urun_listesi",
         "Hareketler": "hareketler",
         "Blokeli_Stok": "blokeli_stok",
         "Sayim_Snapshot": "sayim_snapshot",

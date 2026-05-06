@@ -64,9 +64,6 @@ def run_islem(conn):
     except Exception as e:
         st.error(f"Hata: {e}")
 
-import streamlit as st
-import pandas as pd
-
 def run_transfer(conn):
 
     st.title("↔️ Depo İçi Transfer")

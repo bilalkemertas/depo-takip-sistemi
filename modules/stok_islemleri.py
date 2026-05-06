@@ -69,7 +69,7 @@ def run_transfer(conn):
     st.title("↔️ Depo İçi Transfer")
 
     # VERİYİ OKU
-    df = conn.read(worksheet="stok")
+    df = conn.read(worksheet="Stok")
 
     st.dataframe(df)
 
@@ -89,7 +89,7 @@ def run_transfer(conn):
                 df.loc[mask, "lokasyon"] = hedef
 
                 # 🔥 KRİTİK FIX: response'u KULLANMA
-                conn.write(worksheet="stok", data=df)
+                conn.write(worksheet="Stok", data=df)
 
                 st.success("Transfer başarılı")
 

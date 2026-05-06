@@ -1,35 +1,42 @@
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
-# Modüllerine blok_kesim eklendi
-from modules import stok_islemleri, uretim_hazirlik, sayim_modulu, blok_kesim
+from core import db
 
-# Sayfa Ayarları
-st.set_page_config(page_title="Depo Otomasyon v2.0", layout="wide", initial_sidebar_state="expanded")
+from modules import (
+    stok_islemleri,
+    uretim_hazirlik,
+    sayim_modulu,
+    blok_kesim
+)
 
-# Veritabanı Bağlantısı
-conn = st.connection("gsheets", type=GSheetsConnection)
+# INIT DB
+db.init_db()
 
-# Navigasyon Menüsü
-st.sidebar.title("📦 DEPO KONTROL MERKEZİ")
-st.sidebar.markdown("---")
-page = st.sidebar.radio("İşlem Seçiniz:", 
-    ["🏠 Ana Sayfa", "📊 Stok Giriş/Çıkış", "↔️ Depo İçi Transfer", "🏗️ Üretim Hazırlık", "📝 Sayım Modülü", "✂️ BLOK KESİM"])
+st.set_page_config(
+    page_title="Depo Otomasyon v3 (SQLite)",
+    layout="wide"
+)
 
-if page == "🏠 Ana Sayfa":
-    st.title("Depo Yönetim Paneli")
-    st.info("Lütfen işlem yapmak için sol taraftaki menüyü kullanın.")
+st.sidebar.title("📦 WMS SQLITE")
 
-elif page == "📊 Stok Giriş/Çıkış":
-    stok_islemleri.run_islem(conn) # Buradaki minik yazım hatası düzeltildi
+page = st.sidebar.radio(
+    "Menü",
+    ["Ana", "Stok", "Transfer", "Üretim", "Sayım", "Blok Kesim"]
+)
 
-elif page == "↔️ Depo İçi Transfer":
-    stok_islemleri.run_transfer(conn)
+if page == "Ana":
+    st.title("SQLite WMS Sistemi")
 
-elif page == "🏗️ Üretim Hazırlık":
-    uretim_hazirlik.run(conn)
+elif page == "Stok":
+    stok_islemleri.run()
 
-elif page == "📝 Sayım Modülü":
-    sayim_modulu.run(conn)
+elif page == "Transfer":
+    stok_islemleri.run_transfer()
 
-elif page == "✂️ BLOK KESİM":
-    blok_kesim.run_blok_kesim(conn)
+elif page == "Üretim":
+    uretim_hazirlik.run()
+
+elif page == "Sayım":
+    sayim_modulu.run()
+
+elif page == "Blok Kesim":
+    blok_kesim.run()

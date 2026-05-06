@@ -8,7 +8,7 @@ def run_transfer(conn):
     try:
         # Verileri senin güncel sekme isimlerine göre çekiyoruz
         df_stok = conn.read(worksheet="Urun_Listesi")
-        df_hareketler = conn.read(worksheet="HAREKETLER")
+        df_hareketler = conn.read(worksheet="Hareketler")
         
         # Akıllı Arama Bölümü
         search_transfer = st.text_input("🔍 Transfer Edilecek Ürünü Ara", key="trans_search")

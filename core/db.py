@@ -25,7 +25,6 @@ def init_db():
     )
     """)
 
-    # Ürün Listesi Tablosu
     cur.execute("""
     CREATE TABLE IF NOT EXISTS urun_listesi (
         kod TEXT PRIMARY KEY,
@@ -150,11 +149,17 @@ def sync_from_drive():
         "Audit_Log": "audit_log"
     }
     
+    basarili = []
+    hatali = []
+    
     for sheet_name, sql_table in tablolar.items():
         try:
             df = g_conn.read(worksheet=sheet_name, ttl=0)
             if isinstance(df, pd.DataFrame) and not df.empty:
-                df.columns = [str(c).strip().lower() for c in df.columns]
+                df.columns = [str(c).strip().upper() for c in df.columns]
                 write(sql_table, df)
+                basarili.append(sheet_name)
         except Exception as e:
-            pass
+            hatali.append(f"{sheet_name} (Hata: {str(e)[:50]}...)")
+            
+    return basarili, hatali

@@ -6,10 +6,8 @@ from streamlit_gsheets import GSheetsConnection
 
 DB = "wms.db"
 
-
 def conn():
     return sqlite3.connect(DB, check_same_thread=False)
-
 
 # ---------------- INIT ----------------
 def init_db():
@@ -24,6 +22,16 @@ def init_db():
         adres TEXT,
         miktar REAL,
         durum TEXT
+    )
+    """)
+
+    # Ürün Listesi Tablosu Eklendi
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS Urun_Listesi (
+        kod TEXT PRIMARY KEY,
+        isim TEXT,
+        birim TEXT,
+        adres TEXT
     )
     """)
 
@@ -75,7 +83,6 @@ def init_db():
     c.commit()
     c.close()
 
-
 # ---------------- READ ----------------
 def read(table):
     c = conn()
@@ -83,13 +90,11 @@ def read(table):
     c.close()
     return df
 
-
 # ---------------- WRITE (FULL REPLACE MVP) ----------------
 def write(table, df):
     c = conn()
     df.to_sql(table, c, if_exists="replace", index=False)
     c.close()
-
 
 # ---------------- LOG ----------------
 def log(user, action, detail):
@@ -114,12 +119,11 @@ def get_drive_conn():
     return st.connection("gsheets", type=GSheetsConnection)
 
 def sync_to_drive():
-    """SQLite veritabanındaki verileri Google Drive'a gönderir."""
     g_conn = get_drive_conn()
     
-    # SQLite Tabloları ve Drive Sekme İsimleri
     tablolar = {
         "stok": "Stok",
+        "Urun_Listesi": "Urun_Listesi",
         "hareketler": "Hareketler",
         "blokeli_stok": "Blokeli_Stok",
         "sayim_snapshot": "Sayim_Snapshot",
@@ -132,14 +136,14 @@ def sync_to_drive():
             if not df.empty:
                 g_conn.update(worksheet=sheet_name, data=df)
         except Exception as e:
-            pass # Eğer Drive dosyasında o isimde sekme yoksa hata vermeden diğerine geçer
+            pass
 
 def sync_from_drive():
-    """Google Drive'daki verileri SQLite'a indirir (Tam Eşitleme)."""
     g_conn = get_drive_conn()
     
     tablolar = {
         "Stok": "stok",
+        "Urun_Listesi": "Urun_Listesi",
         "Hareketler": "hareketler",
         "Blokeli_Stok": "blokeli_stok",
         "Sayim_Snapshot": "sayim_snapshot",
@@ -150,8 +154,7 @@ def sync_from_drive():
         try:
             df = g_conn.read(worksheet=sheet_name, ttl=0)
             if isinstance(df, pd.DataFrame) and not df.empty:
-                # Başlıklardaki olası boşlukları temizle
-                df.columns = [str(c).strip() for c in df.columns]
+                df.columns = [str(c).strip().lower() for c in df.columns]
                 write(sql_table, df)
         except Exception as e:
             pass

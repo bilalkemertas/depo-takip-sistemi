@@ -7,9 +7,19 @@ def get_katalog():
     try:
         df_katalog = db.read("urun_listesi")
         if not df_katalog.empty:
-            return df_katalog.apply(lambda x: f"{x['kod']} | {x['isim']}", axis=1).tolist()
+            df_katalog.columns = [str(c).strip().upper() for c in df_katalog.columns]
+            
+            kod_col = next((c for c in df_katalog.columns if 'KOD' in c), None)
+            isim_col = next((c for c in df_katalog.columns if 'ISIM' in c or 'İSİM' in c), None)
+            
+            if kod_col and isim_col:
+                return df_katalog.apply(lambda x: f"{x[kod_col]} | {x[isim_col]}", axis=1).tolist()
+            else:
+                st.error("Urun_Listesi tablosunda 'KOD' ve 'İSİM' sütunları bulunamadı!")
+                return []
         return []
-    except:
+    except Exception as e:
+        st.error(f"Katalog okuma hatası: {e}")
         return []
 
 def clear_form():
@@ -35,7 +45,7 @@ def run_islem():
         del st.session_state["islem_basarili"]
         del st.session_state["mesaj"]
 
-   # --- YENİ AKILLI SENKRONİZASYON BUTONU ---
+    # --- YENİ AKILLI SENKRONİZASYON BUTONU ---
     if st.button("🔄 Drive'dan Katalog İndir", type="secondary"):
         with st.spinner("Katalog güncelleniyor..."):
             db.init_db()
@@ -46,9 +56,7 @@ def run_islem():
         if hatali:
             st.error(f"❌ İndirilemeyenler: {', '.join(hatali)}")
             st.info("💡 Lütfen Drive Excel dosyanızdaki sekme isimlerinin (örn: 'Urun_Listesi') birebir aynı olduğundan emin olun.")
-        
-        # st.rerun() <--- BU SATIRI TAMAMEN SİLDİK
-        st.rerun()
+        # st.rerun() satırı uyarıları görebilmen için özellikle kapalı bırakıldı.
 
     st.subheader("📊 Stok Hareketleri (Toplu İşlem)")
     

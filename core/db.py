@@ -1,26 +1,19 @@
 import sqlite3
 import pandas as pd
-import streamlit as st
 from datetime import datetime
 
-DB_NAME = "wms.db"
+DB = "wms.db"
 
 
-# -------------------------
-# CONNECTION
-# -------------------------
-def get_conn():
-    return sqlite3.connect(DB_NAME, check_same_thread=False)
+def conn():
+    return sqlite3.connect(DB, check_same_thread=False)
 
 
-# -------------------------
-# INIT DB
-# -------------------------
+# ---------------- INIT ----------------
 def init_db():
-    conn = get_conn()
-    cur = conn.cursor()
+    c = conn()
+    cur = c.cursor()
 
-    # STOK
     cur.execute("""
     CREATE TABLE IF NOT EXISTS stok (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,7 +25,6 @@ def init_db():
     )
     """)
 
-    # HAREKETLER
     cur.execute("""
     CREATE TABLE IF NOT EXISTS hareketler (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,61 +35,74 @@ def init_db():
         kaynak TEXT,
         hedef TEXT,
         miktar REAL,
-        user TEXT
+        user TEXT,
+        aciklama TEXT
     )
     """)
 
-    # SAYIM
     cur.execute("""
-    CREATE TABLE IF NOT EXISTS sayim (
+    CREATE TABLE IF NOT EXISTS blokeli_stok (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kod TEXT,
+        adres TEXT,
+        miktar REAL,
+        sebep TEXT
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS sayim_snapshot (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         oturum TEXT,
-        tarih TEXT,
-        adres TEXT,
         kod TEXT,
-        miktar REAL,
-        user TEXT
+        adres TEXT,
+        miktar REAL
     )
     """)
 
-    conn.commit()
-    conn.close()
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS audit_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tarih TEXT,
+        user TEXT,
+        action TEXT,
+        detay TEXT
+    )
+    """)
+
+    c.commit()
+    c.close()
 
 
-# -------------------------
-# GENERIC READ
-# -------------------------
-def read_table(table):
-    conn = get_conn()
-    df = pd.read_sql_query(f"SELECT * FROM {table}", conn)
-    conn.close()
+# ---------------- READ ----------------
+def read(table):
+    c = conn()
+    df = pd.read_sql_query(f"SELECT * FROM {table}", c)
+    c.close()
     return df
 
 
-# -------------------------
-# WRITE (REPLACE MODE - MVP)
-# -------------------------
-def write_table(table, df):
-    conn = get_conn()
-    df.to_sql(table, conn, if_exists="replace", index=False)
-    conn.close()
+# ---------------- WRITE (FULL REPLACE MVP) ----------------
+def write(table, df):
+    c = conn()
+    df.to_sql(table, c, if_exists="replace", index=False)
+    c.close()
 
 
-# -------------------------
-# LOG SYSTEM
-# -------------------------
-def add_log(islem, kod, isim, kaynak, hedef, miktar, user):
-    conn = get_conn()
-    cur = conn.cursor()
+# ---------------- LOG ----------------
+def log(user, action, detail):
+    c = conn()
+    cur = c.cursor()
 
     cur.execute("""
-        INSERT INTO hareketler
-        (tarih, islem, kod, isim, kaynak, hedef, miktar, user)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO audit_log (tarih, user, action, detay)
+        VALUES (?, ?, ?, ?)
     """, (
         datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        islem, kod, isim, kaynak, hedef, miktar, user
+        user,
+        action,
+        detail
     ))
 
-    conn.commit()
-    conn.close()
+    c.commit()
+    c.close()

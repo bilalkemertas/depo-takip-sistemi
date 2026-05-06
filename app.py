@@ -1,6 +1,9 @@
 import streamlit as st
+
+# ---------------- CORE ----------------
 from core import db
 
+# ---------------- MODULES ----------------
 from modules import (
     stok_islemleri,
     uretim_hazirlik,
@@ -8,35 +11,64 @@ from modules import (
     blok_kesim
 )
 
-# INIT DB
+# ---------------- INIT DB ----------------
 db.init_db()
 
+# ---------------- PAGE CONFIG ----------------
 st.set_page_config(
-    page_title="Depo Otomasyon v3 (SQLite)",
-    layout="wide"
+    page_title="Depo Otomasyon v3 - SQLite",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-st.sidebar.title("📦 WMS SQLITE")
+# ---------------- SESSION INIT ----------------
+if "user" not in st.session_state:
+    st.session_state.user = "admin"  # şimdilik basit auth
+
+if "page" not in st.session_state:
+    st.session_state.page = "home"
+
+
+# ---------------- SIDEBAR MENU ----------------
+st.sidebar.title("📦 WMS CONTROL CENTER")
+st.sidebar.markdown("---")
 
 page = st.sidebar.radio(
-    "Menü",
-    ["Ana", "Stok", "Transfer", "Üretim", "Sayım", "Blok Kesim"]
+    "İşlem Seçiniz",
+    [
+        "🏠 Ana Sayfa",
+        "📊 Stok Giriş / Çıkış",
+        "↔️ Depo Transfer",
+        "🏗️ Üretim Hazırlık",
+        "📝 Sayım Modülü",
+        "✂️ Blok Kesim"
+    ]
 )
 
-if page == "Ana":
-    st.title("SQLite WMS Sistemi")
+st.sidebar.markdown("---")
+st.sidebar.info(f"Kullanıcı: {st.session_state.user}")
 
-elif page == "Stok":
+
+# ---------------- ROUTER ----------------
+if page == "🏠 Ana Sayfa":
+    st.title("📦 SQLite WMS Sistemine Hoş Geldiniz")
+    st.write("Modül seçerek işlemlere başlayabilirsiniz.")
+
+    # hızlı özet
+    df = db.read("stok")
+    st.metric("Toplam Stok Kalemi", len(df))
+
+elif page == "📊 Stok Giriş / Çıkış":
     stok_islemleri.run()
 
-elif page == "Transfer":
+elif page == "↔️ Depo Transfer":
     stok_islemleri.run_transfer()
 
-elif page == "Üretim":
+elif page == "🏗️ Üretim Hazırlık":
     uretim_hazirlik.run()
 
-elif page == "Sayım":
+elif page == "📝 Sayım Modülü":
     sayim_modulu.run()
 
-elif page == "Blok Kesim":
+elif page == "✂️ Blok Kesim":
     blok_kesim.run()

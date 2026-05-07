@@ -21,14 +21,16 @@ def init_db():
 def read(table):
     try:
         with conn() as c:
+            # SQLite büyük/küçük harf duyarlılığı için küçük harf zorlaması
             return pd.read_sql_query(f"SELECT * FROM {table.lower()}", c)
     except:
         return pd.DataFrame()
 
+# --- KRİTİK GÜNCELLEME: APPEND HATASINI ÖNLEYEN YAZMA MANTIĞI ---
 def write(table, df, exists_action='replace'):
     with conn() as c:
-        # Hata Çözümü: Eğer append yapıyorsak ve df içinde 'id' varsa onu atıyoruz. 
-        # Çünkü SQLite 'id'yi otomatik vermeli.
+        # HATA ÇÖZÜMÜ: Eğer append yapılıyorsa ve 'id' sütunu gelmişse onu drop ediyoruz.
+        # Çünkü SQLite 'id'yi otomatik (Auto Increment) olarak kendi atamalı.
         if exists_action == 'append' and 'id' in df.columns:
             df = df.drop(columns=['id'])
             
@@ -38,7 +40,7 @@ def sync_to_drive():
     g_conn = st.connection("gsheets", type=GSheetsConnection)
     tablolar = {"stok": "Stok", "hareketler": "Hareketler"}
     for sql_t, sheet_n in tablolar.items():
-        df = read(sql_t)
+        df = db.read(sql_t)
         if not df.empty:
             g_conn.update(worksheet=sheet_n, data=df)
 

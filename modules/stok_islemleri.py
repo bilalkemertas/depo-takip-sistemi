@@ -3,8 +3,11 @@ from core import db
 import pandas as pd
 from datetime import datetime
 
+# HIZ İÇİN KRİTİK: Katalog verisini 10 dakika hafızada tutar.
+@st.cache_data(ttl=600)
 def get_katalog():
     try:
+        # Önce lokal SQL'den oku (Drive'a gitmeyi engeller)
         db.init_db()
         df_katalog = db.read("urun_listesi")
         if not df_katalog.empty:
@@ -47,6 +50,8 @@ def run_islem():
             basarili, hatali = db.sync_from_drive()
         if basarili:
             st.success(f"✅ Başarıyla İnenler: {', '.join(basarili)}")
+            # Katalog güncellendiği için önbelleği zorla temizle
+            st.cache_data.clear()
         if hatali:
             st.error(f"❌ İndirilemeyenler: {', '.join(hatali)}")
         st.rerun()
@@ -60,6 +65,7 @@ def run_islem():
             key="move_type"
         )
         
+        # Bu fonksiyon artık @st.cache_data sayesinde anlık çalışacak
         katalog = get_katalog()
         sec = st.selectbox(
             "🔍 Ürün Seç:", 
@@ -195,13 +201,14 @@ def run_islem():
             db.write("stok", df_stok)
             db.write("hareketler", df_hareketler)
             
+            # DRIVE'A GÖNDERME
             db.sync_to_drive()
             db.log(personel, "Toplu Stok İşlemi", f"{kaydedilen_sayi} kalem işlendi.")
             
             st.session_state["islem_basarili"] = True
-            st.session_state["mesaj"] = f"✅ {kaydedilen_sayi} kalem işlendi ve buluta aktarıldı!"
+            st.session_state["mesaj"] = f"✅ {kaydedilen_sayi} kalem işlendi ve Drive'a aktarıldı!"
             st.session_state.gecici_liste = []
-            st.cache_data.clear()
+            st.cache_data.clear() # Stok güncellendiği için önbelleği temizle
             st.rerun()
 
 def run_transfer():

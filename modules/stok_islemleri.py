@@ -144,8 +144,8 @@ def run_islem():
         if st.button("🚀 TÜM HAREKETLERİ VERİTABANINA İŞLE", use_container_width=True, type="primary"):
             try:
                 # --- VAGONLARI KOPARAN KESİN HAMLE ---
-                kopya_liste = st.session_state.gecici_liste.copy()
-                st.session_state.gecici_liste = [] # ÖNCE LİSTEYİ SİLİYORUZ
+                isleme_alinacak_liste = list(st.session_state.gecici_liste)
+                st.session_state.gecici_liste = [] # ÖNCE LİSTEYİ SİLİYORUZ (ZORUNLU TAHLİYE)
                 
                 df_stok = db.read("stok")
                 df_hareketler = db.read("hareketler")
@@ -162,7 +162,7 @@ def run_islem():
                 df_stok['miktar'] = pd.to_numeric(df_stok['miktar'], errors='coerce').fillna(0)
 
                 kaydedilen_sayi = 0
-                for satir in kopya_liste:
+                for satir in isleme_alinacak_liste:
                     yeni_hareket_satiri = {
                         "tarih": islem_zamani, "islem": satir["İşlem"], "kod": satir["Kod"],
                         "isim": satir["İsim"], "kaynak": satir["Kaynak"], "hedef": satir["Hedef"],
@@ -189,6 +189,7 @@ def run_islem():
                         df_hareketler = pd.concat([df_hareketler, pd.DataFrame([yeni_hareket_satiri])], ignore_index=True)
                         kaydedilen_sayi += 1
 
+                # 3. YAZ VE SENKRONİZE ET
                 db.write("stok", df_stok)
                 db.write("hareketler", df_hareketler)
                 db.sync_to_drive()

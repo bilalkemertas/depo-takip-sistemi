@@ -12,7 +12,7 @@ def get_katalog():
             df_katalog.columns = [str(c).strip().upper() for c in df_katalog.columns]
             kod_col = next((c for c in df_katalog.columns if 'KOD' in c), None)
             isim_col = next((c for c in df_katalog.columns if 'ISIM' in c or 'İSİM' in c), None)
-            if kod_col and isim_col:
+        if kod_col and isim_col:
                 return df_katalog.apply(lambda x: f"{x[kod_col]} | {x[isim_col]}", axis=1).tolist()
         return []
     except Exception as e:
@@ -92,7 +92,7 @@ def run():
                     st.session_state.gecici_liste.pop(i); st.rerun()
 
         st.divider()
-        if st.button("🚀 TÜM HAREKETLERİ VERİTABANINA İŞLE", use_container_width=True, type="primary"):
+  if st.button("🚀 TÜM HAREKETLERİ VERİTABANINA İŞLE", use_container_width=True, type="primary"):
             try:
                 isleme_alinacaklar = list(st.session_state.gecici_liste)
                 st.session_state.gecici_liste = [] 

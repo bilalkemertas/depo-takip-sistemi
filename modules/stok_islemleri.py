@@ -14,8 +14,13 @@ def get_katalog():
             isim_col = next((c for c in df_katalog.columns if 'ISIM' in c or 'İSİM' in c), None)
             if kod_col and isim_col:
                 return df_katalog.apply(lambda x: f"{x[kod_col]} | {x[isim_col]}", axis=1).tolist()
+            else:
+                st.error("Urun_Listesi tablosunda 'KOD' ve 'İSİM' sütunları bulunamadı!")
+                return []
         return []
-    except: return []
+    except Exception as e:
+        st.error(f"Katalog okuma hatası: {e}")
+        return []
 
 def clear_form():
     st.session_state.reset_form = True
@@ -86,11 +91,13 @@ def run_islem():
                 clear_form(); st.rerun()
 
     if st.session_state.gecici_liste:
+        st.markdown("### 📋 İşlem Bekleyen Kalemler")
         for i, item in enumerate(st.session_state.gecici_liste):
-            with st.expander(f"{i+1}. {item['İşlem']} | {item['Kod']}"):
-                if st.button(f"🗑️ Sil", key=f"del_{i}"):
+            with st.expander(f"{i+1}. {item['İşlem']} | {item['Kod']} | {item['Miktar']} Adet"):
+                if st.button(f"🗑️ Bu Satırı Sil", key=f"del_{i}"):
                     st.session_state.gecici_liste.pop(i); st.rerun()
 
+        st.divider()
         if st.button("🚀 TÜM HAREKETLERİ VERİTABANINA İŞLE", use_container_width=True, type="primary"):
             try:
                 isleme_alinacaklar = list(st.session_state.gecici_liste)
@@ -102,7 +109,8 @@ def run_islem():
                 personel = st.session_state.get("user", "Sistem")
 
                 for satir in isleme_alinacaklar:
-                    yeni_hkt_df = pd.concat([yeni_hkt_df, pd.DataFrame([{"tarih": is_time, "islem": satir["İşlem"], "kod": satir["Kod"], "isim": satir["İsim"], "kaynak": satir["Kaynak"], "hedef": satir["Hedef"], "miktar": satir["Miktar"], "user": personel, "aciklama": satir["Lot"]}])], ignore_index=True)
+                    yeni_hkt = {"tarih": is_time, "islem": satir["İşlem"], "kod": satir["Kod"], "isim": satir["İsim"], "kaynak": satir["Kaynak"], "hedef": satir["Hedef"], "miktar": satir["Miktar"], "user": personel, "aciklama": satir["Lot"]}
+                    yeni_hkt_df = pd.concat([yeni_hkt_df, pd.DataFrame([yeni_hkt])], ignore_index=True)
                     
                     if satir["İşlem"] == "GİRİŞ":
                         mask = (df_stok['kod'] == satir["Kod"]) & (df_stok['adres'] == satir["Hedef"])
@@ -111,12 +119,6 @@ def run_islem():
                     elif satir["İşlem"] == "ÇIKIŞ":
                         mask = (df_stok['kod'] == satir["Kod"]) & (df_stok['adres'] == satir["Kaynak"])
                         if mask.any(): df_stok.loc[mask, 'miktar'] = max(0, df_stok.loc[mask, 'miktar'].values[0] - satir["Miktar"])
-                    elif satir["İşlem"] == "İÇ TRANSFER":
-                        s_mask = (df_stok['kod'] == satir["Kod"]) & (df_stok['adres'] == satir["Kaynak"])
-                        d_mask = (df_stok['kod'] == satir["Kod"]) & (df_stok['adres'] == satir["Hedef"])
-                        if s_mask.any(): df_stok.loc[s_mask, 'miktar'] -= satir["Miktar"]
-                        if d_mask.any(): df_stok.loc[d_mask, 'miktar'] += satir["Miktar"]
-                        else: df_stok = pd.concat([df_stok, pd.DataFrame([{"kod": satir["Kod"], "isim": satir["İsim"], "adres": satir["Hedef"], "miktar": satir["Miktar"], "durum": satir["Durum"]}])], ignore_index=True)
 
                 db.write("hareketler", yeni_hkt_df, exists_action='append')
                 db.write("stok", df_stok, exists_action='replace')

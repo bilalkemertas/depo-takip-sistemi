@@ -150,7 +150,7 @@ else:
     else:
         # Seçili Modülü Çalıştır
         if st.session_state.current_module == "stok":
-            stok_islemleri.run_islem()
+            stok_islemleri.run()
         elif st.session_state.current_module == "teslim":
             teslim_alma.run()
         elif st.session_state.current_module == "uretim":

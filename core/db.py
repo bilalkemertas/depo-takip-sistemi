@@ -13,7 +13,6 @@ def init_db():
     with conn() as c:
         c.execute("PRAGMA journal_mode=WAL;")
         cur = c.cursor()
-        # Tablo oluşturma komutları aynı kalıyor...
         cur.execute("CREATE TABLE IF NOT EXISTS stok (id INTEGER PRIMARY KEY AUTOINCREMENT, kod TEXT, isim TEXT, adres TEXT, miktar REAL, durum TEXT)")
         cur.execute("CREATE TABLE IF NOT EXISTS hareketler (id INTEGER PRIMARY KEY AUTOINCREMENT, tarih TEXT, islem TEXT, kod TEXT, isim TEXT, kaynak TEXT, hedef TEXT, miktar REAL, user TEXT, aciklama TEXT)")
         cur.execute("CREATE TABLE IF NOT EXISTS urun_listesi (kod TEXT PRIMARY KEY, isim TEXT, birim TEXT, adres TEXT)")
@@ -26,20 +25,11 @@ def read(table):
     except:
         return pd.DataFrame()
 
-def write(table, df):
-    # Bu fonksiyon stok tablosunu güncellerken tabloyu overwrite etmeye devam eder
+# --- PATRONUN İSTEDİĞİ VE DÜZELTTİĞİ FONKSİYON ---
+def write(table, df, exists_action='replace'):
     with conn() as c:
-        df.to_sql(table, c, if_exists="replace", index=False)
-
-# --- PATRONUN İSTEDİĞİ KESİN ÇÖZÜM: SADECE INSERT ---
-def insert(table, data_dict):
-    """Veriyi komple tabloyu okumadan doğrudan SQL ile ekler (Hızlı ve Güvenli)"""
-    with conn() as c:
-        cols = ', '.join(data_dict.keys())
-        placeholders = ', '.join(['?'] * len(data_dict))
-        sql = f"INSERT INTO {table} ({cols}) VALUES ({placeholders})"
-        c.execute(sql, list(data_dict.values()))
-        c.commit()
+        # exists_action: 'replace' (Stok için), 'append' (Hareketler için)
+        df.to_sql(table, c, if_exists=exists_action, index=False)
 
 def sync_to_drive():
     g_conn = st.connection("gsheets", type=GSheetsConnection)
@@ -49,5 +39,12 @@ def sync_to_drive():
             g_conn.update(worksheet=t.capitalize(), data=df)
 
 def sync_from_drive():
-    # Mevcut kodun aynısı...
-    pass
+    g_conn = st.connection("gsheets", type=GSheetsConnection)
+    tablolar = {"Stok": "stok", "Urun_Listesi": "urun_listesi", "Hareketler": "hareketler"}
+    for sheet, sql in tablolar.items():
+        try:
+            df = g_conn.read(worksheet=sheet, ttl=0)
+            if not df.empty:
+                df.columns = [str(c).strip().lower() for c in df.columns]
+                write(sql, df, 'replace')
+        except: pass

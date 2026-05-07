@@ -93,9 +93,9 @@ def run_islem():
                 if st.button(f"🗑️ Bu Satırı Sil", key=f"del_{i}"):
                     st.session_state.gecici_liste.pop(i); st.rerun()
 
+        st.divider()
         if st.button("🚀 TÜM HAREKETLERİ VERİTABANINA İŞLE", use_container_width=True, type="primary"):
             try:
-                # 1. HAFIZAYI TAHLİYE ET
                 isleme_alinacaklar = list(st.session_state.gecici_liste)
                 st.session_state.gecici_liste = [] 
                 
@@ -120,7 +120,7 @@ def run_islem():
                         mask = (df_stok['kod'] == satir["Kod"]) & (df_stok['adres'] == satir["Kaynak"])
                         if mask.any(): df_stok.loc[mask, 'miktar'] = max(0, df_stok.loc[mask, 'miktar'].values[0] - satir["Miktar"])
 
-                # --- PATRONUN ÇÖZÜMÜ GÜNCELLENDİ ---
+                # --- DEBUG VE KESİN ÇÖZÜM ---
                 db.write("hareketler", yeni_hkt_df, exists_action='append')
                 db.write("stok", df_stok, exists_action='replace')
                 

@@ -3,124 +3,116 @@ import pandas as pd
 from datetime import datetime
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
+import time
 
 DB = "depo.db"
 
 def conn():
-    # timeout=20 ekleyerek SQLite'ın kilit açılana kadar beklemesini sağlıyoruz
-    return sqlite3.connect(DB, check_same_thread=False, timeout=20)
+    # timeout=30: Kilit açılana kadar 30 saniye boyunca sabırla dene.
+    return sqlite3.connect(DB, check_same_thread=False, timeout=30)
 
 # ---------------- INIT ----------------
 def init_db():
-    c = conn()
-    cur = c.cursor()
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS stok (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        kod TEXT,
-        isim TEXT,
-        adres TEXT,
-        miktar REAL,
-        durum TEXT
-    )
-    """)
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS urun_listesi (
-        kod TEXT PRIMARY KEY,
-        isim TEXT,
-        birim TEXT,
-        adres TEXT
-    )
-    """)
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS hareketler (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        tarih TEXT,
-        islem TEXT,
-        kod TEXT,
-        isim TEXT,
-        kaynak TEXT,
-        hedef TEXT,
-        miktar REAL,
-        user TEXT,
-        aciklama TEXT
-    )
-    """)
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS blokeli_stok (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        kod TEXT,
-        adres TEXT,
-        miktar REAL,
-        sebep TEXT
-    )
-    """)
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS sayim_snapshot (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        oturum TEXT,
-        kod TEXT,
-        adres TEXT,
-        miktar REAL
-    )
-    """)
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS audit_log (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        tarih TEXT,
-        user TEXT,
-        action TEXT,
-        detay TEXT
-    )
-    """)
-
-    c.commit()
-    c.close()
+    with conn() as c:
+        cur = c.cursor()
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS stok (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kod TEXT,
+            isim TEXT,
+            adres TEXT,
+            miktar REAL,
+            durum TEXT
+        )
+        """)
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS urun_listesi (
+            kod TEXT PRIMARY KEY,
+            isim TEXT,
+            birim TEXT,
+            adres TEXT
+        )
+        """)
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS hareketler (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tarih TEXT,
+            islem TEXT,
+            kod TEXT,
+            isim TEXT,
+            kaynak TEXT,
+            hedef TEXT,
+            miktar REAL,
+            user TEXT,
+            aciklama TEXT
+        )
+        """)
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS blokeli_stok (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kod TEXT,
+            adres TEXT,
+            miktar REAL,
+            sebep TEXT
+        )
+        """)
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS sayim_snapshot (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            oturum TEXT,
+            kod TEXT,
+            adres TEXT,
+            miktar REAL
+        )
+        """)
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tarih TEXT,
+            user TEXT,
+            action TEXT,
+            detay TEXT
+        )
+        """)
+        c.commit()
 
 # ---------------- READ ----------------
 def read(table):
-    c = conn()
+    # 'with' bloğu kullanılarak bağlantı iş bittiği an zorla kapatılır
     try:
-        # Tablo yoksa hata vermemesi için koruma
-        df = pd.read_sql_query(f"SELECT * FROM {table}", c)
+        with conn() as c:
+            df = pd.read_sql_query(f"SELECT * FROM {table}", c)
+            return df
     except:
-        df = pd.DataFrame()
-    finally:
-        c.close()
-    return df
+        return pd.DataFrame()
 
-# ---------------- WRITE (OPERATIONAL ERROR FIX) ----------------
+# ---------------- WRITE (OPERATIONAL ERROR KESİN ÇÖZÜM) ----------------
 def write(table, df):
-    c = conn()
-    try:
-        # replace yerine bazen kilitlenme olabiliyor, güvenli yazma:
-        df.to_sql(table, c, if_exists="replace", index=False)
-    except Exception as e:
-        # Eğer tablo meşgulse 1 saniye bekleyip tekrar dene (Agresif Mod)
-        import time
-        time.sleep(1)
-        df.to_sql(table, c, if_exists="replace", index=False)
-    finally:
-        c.close()
+    # Veritabanı kilitliyse 3 kez deneme yapan mekanizma
+    for attempt in range(3):
+        try:
+            with conn() as c:
+                df.to_sql(table, c, if_exists="replace", index=False)
+                return # Başarılıysa fonksiyondan çık
+        except sqlite3.OperationalError:
+            if attempt < 2:
+                time.sleep(1) # 1 saniye bekle ve tekrar dene
+                continue
+            else:
+                st.error("Veritabanı kilitli! Lütfen bir kaç saniye sonra tekrar deneyin.")
+        except Exception as e:
+            st.error(f"Yazma Hatası: {e}")
+            break
 
 # ---------------- LOG ----------------
 def log(user, action, detail):
-    c = conn()
-    try:
+    with conn() as c:
         cur = c.cursor()
         cur.execute("""
             INSERT INTO audit_log (tarih, user, action, detay)
             VALUES (?, ?, ?, ?)
         """, (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user, action, detail))
         c.commit()
-    finally:
-        c.close()
 
 # ---------------- DRIVE EXCEL (GSHEETS) EŞİTLEME ----------------
 def get_drive_conn():
@@ -128,11 +120,7 @@ def get_drive_conn():
 
 def sync_to_drive():
     g_conn = get_drive_conn()
-    tablolar = {
-        "stok": "Stok",
-        "urun_listesi": "Urun_Listesi",
-        "hareketler": "Hareketler"
-    }
+    tablolar = {"stok": "Stok", "urun_listesi": "Urun_Listesi", "hareketler": "Hareketler"}
     for sql_table, sheet_name in tablolar.items():
         try:
             df = read(sql_table)
@@ -144,19 +132,15 @@ def sync_to_drive():
 def sync_from_drive():
     g_conn = get_drive_conn()
     tablolar = {
-        "Stok": "stok",
-        "Urun_Listesi": "urun_listesi",
-        "Hareketler": "hareketler",
-        "Blokeli_Stok": "blokeli_stok",
-        "Sayim_Snapshot": "sayim_snapshot",
-        "Audit_Log": "audit_log"
+        "Stok": "stok", "Urun_Listesi": "urun_listesi", "Hareketler": "hareketler",
+        "Blokeli_Stok": "blokeli_stok", "Sayim_Snapshot": "sayim_snapshot", "Audit_Log": "audit_log"
     }
-    basarili = []
-    hatali = []
+    basarili, hatali = [], []
     for sheet_name, sql_table in tablolar.items():
         try:
             df = g_conn.read(worksheet=sheet_name, ttl=0)
             if isinstance(df, pd.DataFrame) and not df.empty:
+                # Sütun isimlerini küçük harf yap
                 df.columns = [str(c).strip().lower() for c in df.columns]
                 write(sql_table, df)
                 basarili.append(sheet_name)

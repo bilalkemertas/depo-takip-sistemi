@@ -85,17 +85,14 @@ def init_db():
 # ---------------- READ ----------------
 def read(table):
     c = conn()
-    try:
-        df = pd.read_sql_query(f"SELECT * FROM {table}", c)
-    except:
-        df = pd.DataFrame()
+    df = pd.read_sql_query(f"SELECT * FROM {table}", c)
     c.close()
     return df
 
-# ---------------- WRITE (HATA ENGELLEYİCİ) ----------------
+# ---------------- WRITE (REFERANS KOD - FIX) ----------------
 def write(table, df):
     c = conn()
-    # Veriyi yazarken tablo varsa içini boşaltıp yeniden yazar
+    # "Already exists" hatasını önlemek için if_exists="replace" kullanıyoruz
     df.to_sql(table, c, if_exists="replace", index=False)
     c.close()
 
@@ -138,7 +135,7 @@ def sync_to_drive():
             df = read(sql_table)
             if not df.empty:
                 g_conn.update(worksheet=sheet_name, data=df)
-        except:
+        except Exception as e:
             pass
 
 def sync_from_drive():
@@ -160,11 +157,11 @@ def sync_from_drive():
         try:
             df = g_conn.read(worksheet=sheet_name, ttl=0)
             if isinstance(df, pd.DataFrame) and not df.empty:
-                # Sütun isimlerini veritabanı ile uyumlu hale getir (Küçük harf standartı)
+                # Görseldeki gibi küçük harf başlıklar için standartlaştırma:
                 df.columns = [str(c).strip().lower() for c in df.columns]
                 write(sql_table, df)
                 basarili.append(sheet_name)
         except Exception as e:
-            hatali.append(f"{sheet_name} (Hata: {str(e)[:40]}...)")
+            hatali.append(f"{sheet_name} (Hata: {str(e)[:30]}...)")
             
     return basarili, hatali

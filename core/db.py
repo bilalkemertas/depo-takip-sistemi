@@ -8,12 +8,15 @@ import time
 DB = "depo.db"
 
 def conn():
-    # timeout=30: Kilit açılana kadar 30 saniye boyunca sabırla dene.
+    # SQLite kilitlenmelerini önlemek için timeout ve WAL modu aktif
     return sqlite3.connect(DB, check_same_thread=False, timeout=30)
 
 # ---------------- INIT ----------------
 def init_db():
     with conn() as c:
+        # HIZ İÇİN KRİTİK AYAR: WAL Modu
+        c.execute("PRAGMA journal_mode=WAL;")
+        c.execute("PRAGMA synchronous=NORMAL;")
         cur = c.cursor()
         cur.execute("""
         CREATE TABLE IF NOT EXISTS stok (
@@ -78,7 +81,6 @@ def init_db():
 
 # ---------------- READ ----------------
 def read(table):
-    # 'with' bloğu kullanılarak bağlantı iş bittiği an zorla kapatılır
     try:
         with conn() as c:
             df = pd.read_sql_query(f"SELECT * FROM {table}", c)
@@ -86,20 +88,19 @@ def read(table):
     except:
         return pd.DataFrame()
 
-# ---------------- WRITE (OPERATIONAL ERROR KESİN ÇÖZÜM) ----------------
+# ---------------- WRITE ----------------
 def write(table, df):
-    # Veritabanı kilitliyse 3 kez deneme yapan mekanizma
     for attempt in range(3):
         try:
             with conn() as c:
                 df.to_sql(table, c, if_exists="replace", index=False)
-                return # Başarılıysa fonksiyondan çık
+                return
         except sqlite3.OperationalError:
             if attempt < 2:
-                time.sleep(1) # 1 saniye bekle ve tekrar dene
+                time.sleep(1)
                 continue
             else:
-                st.error("Veritabanı kilitli! Lütfen bir kaç saniye sonra tekrar deneyin.")
+                st.error("Veritabanı meşgul, lütfen bekleyin...")
         except Exception as e:
             st.error(f"Yazma Hatası: {e}")
             break
@@ -114,11 +115,12 @@ def log(user, action, detail):
         """, (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user, action, detail))
         c.commit()
 
-# ---------------- DRIVE EXCEL (GSHEETS) EŞİTLEME ----------------
+# ---------------- DRIVE EXCEL EŞİTLEME ----------------
 def get_drive_conn():
     return st.connection("gsheets", type=GSheetsConnection)
 
 def sync_to_drive():
+    # Bu fonksiyon artık sadece ihtiyaç duyulduğunda çağrılacak
     g_conn = get_drive_conn()
     tablolar = {"stok": "Stok", "urun_listesi": "Urun_Listesi", "hareketler": "Hareketler"}
     for sql_table, sheet_name in tablolar.items():
@@ -140,7 +142,6 @@ def sync_from_drive():
         try:
             df = g_conn.read(worksheet=sheet_name, ttl=0)
             if isinstance(df, pd.DataFrame) and not df.empty:
-                # Sütun isimlerini küçük harf yap
                 df.columns = [str(c).strip().lower() for c in df.columns]
                 write(sql_table, df)
                 basarili.append(sheet_name)

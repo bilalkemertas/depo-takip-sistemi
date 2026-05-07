@@ -143,9 +143,9 @@ def run_islem():
 
         if st.button("🚀 TÜM HAREKETLERİ VERİTABANINA İŞLE", use_container_width=True, type="primary"):
             try:
-                # --- SQLITE SENKRONİZASYON HATASINI ÇÖZEN KRİTİK BLOK ---
+                # --- MÜKERRER KAYIT ÖNLEYİCİ VE HATA GİDERİCİ BLOK ---
                 isleme_alinacaklar = list(st.session_state.gecici_liste)
-                st.session_state.gecici_liste = [] # Hafızayı hemen boşalt ki vagon yapmasın
+                st.session_state.gecici_liste = [] 
                 
                 df_stok = db.read("stok")
                 df_hareketler = db.read("hareketler")
@@ -153,9 +153,10 @@ def run_islem():
                 islem_zamani = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 personel = st.session_state.user if 'user' in st.session_state else "Sistem"
                 
-                # Veri tipi zorlaması (Mükerrer kontrolü için şart)
-                df_stok['kod'] = df_stok['kod'].astype(str).str.strip().upper()
-                df_stok['adres'] = df_stok['adres'].astype(str).str.strip().upper()
+                # 'Series' object has no attribute 'upper' hatasını çözen düzeltme:
+                if not df_stok.empty:
+                    df_stok['kod'] = df_stok['kod'].astype(str).str.strip().str.upper()
+                    df_stok['adres'] = df_stok['adres'].astype(str).str.strip().str.upper()
 
                 kaydedilen_sayi = 0
                 for satir in isleme_alinacaklar:
@@ -176,14 +177,14 @@ def run_islem():
                     df_hareketler = pd.concat([df_hareketler, pd.DataFrame([yeni_hkt])], ignore_index=True)
                     kaydedilen_sayi += 1
 
-                # SQLite'a yaz ve Drive'ı zorla güncelle
+                # Yazma ve Senkronizasyon
                 db.write("stok", df_stok)
                 db.write("hareketler", df_hareketler)
                 db.sync_to_drive()
                 
                 st.session_state["islem_basarili"] = True
                 st.session_state["mesaj"] = f"✅ {kaydedilen_sayi} kalem işlendi."
-                st.cache_data.clear() # Cache'i temizle ki Stok sekmesi yeni halini görsün
+                st.cache_data.clear() 
                 st.rerun()
             except Exception as e:
                 st.error(f"Hata: {e}")

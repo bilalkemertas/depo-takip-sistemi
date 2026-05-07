@@ -221,6 +221,27 @@ def run_islem():
             st.session_state.gecici_liste = []
             st.cache_data.clear()
             st.rerun()
+            def get_katalog():
+    try:
+        db.init_db()
+        df_katalog = db.read("urun_listesi")
+        if not df_katalog.empty:
+            # Sütunları temizle ve küçük harf yap (Eşleşme için)
+            df_katalog.columns = [str(c).strip().lower() for c in df_katalog.columns]
+            
+            # Hem küçük hem büyük harf başlıkları yakalar
+            kod_col = next((c for c in df_katalog.columns if 'kod' in c), None)
+            isim_col = next((c for c in df_katalog.columns if 'isim' in c), None)
+            
+            if kod_col and isim_col:
+                return df_katalog.apply(lambda x: f"{x[kod_col]} | {x[isim_col]}", axis=1).tolist()
+            else:
+                st.error("Urun_Listesi tablosunda 'kod' ve 'isim' sütunları bulunamadı!")
+                return []
+        return []
+    except Exception as e:
+        st.error(f"Katalog okuma hatası: {e}")
+        return []
 
 def run_transfer():
     run_islem()

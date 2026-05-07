@@ -13,15 +13,26 @@ def init_db():
     with conn() as c:
         c.execute("PRAGMA journal_mode=WAL;")
         cur = c.cursor()
+        # ANA TABLOLAR (KÜÇÜK HARF STANDARDI)
         cur.execute("CREATE TABLE IF NOT EXISTS stok (id INTEGER PRIMARY KEY AUTOINCREMENT, kod TEXT, isim TEXT, adres TEXT, miktar REAL, durum TEXT)")
         cur.execute("CREATE TABLE IF NOT EXISTS hareketler (id INTEGER PRIMARY KEY AUTOINCREMENT, tarih TEXT, islem TEXT, kod TEXT, isim TEXT, kaynak TEXT, hedef TEXT, miktar REAL, user TEXT, aciklama TEXT)")
         cur.execute("CREATE TABLE IF NOT EXISTS urun_listesi (kod TEXT PRIMARY KEY, isim TEXT, birim TEXT, adres TEXT)")
+        
         # MAL KABUL TABLOSU
         cur.execute("""
         CREATE TABLE IF NOT EXISTS mal_kabul (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, tarih TEXT, irsaliye_no TEXT, siparis_no TEXT, 
-            tedarikci TEXT, kod TEXT, isim TEXT, miktar REAL, adres TEXT, personel TEXT
-        )""")
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tarih TEXT,
+            irsaliye_no TEXT,
+            siparis_no TEXT,
+            tedarikci TEXT,
+            kod TEXT,
+            isim TEXT,
+            miktar REAL,
+            adres TEXT,
+            personel TEXT
+        )
+        """)
         c.commit()
 
 def read(table):
@@ -31,22 +42,14 @@ def read(table):
     except:
         return pd.DataFrame()
 
-# --- HATA ÇÖZÜCÜ: APPEND ÇAKIŞMASINI BİTİREN YAZMA MANTIĞI ---
 def write(table, df, exists_action='replace'):
     with conn() as c:
         table_name = table.lower()
-        
-        if exists_action == 'append':
-            # SQLite'ın id sütununu Pandas bilmez. id'yi gönderirsek hata alırız.
-            # id varsa siliyoruz ki SQLite kendi otomatik versin.
-            if 'id' in df.columns:
-                df = df.drop(columns=['id'])
+        # Append hatasını önlemek için id sütununu kontrol et
+        if exists_action == 'append' and 'id' in df.columns:
+            df = df.drop(columns=['id'])
             
-            # if_exists='append' ile tabloyu silmeden sadece altına ekliyoruz.
-            df.to_sql(table_name, c, if_exists='append', index=False)
-        else:
-            # Stok tablosu için komple güncelleme (Replace)
-            df.to_sql(table_name, c, if_exists='replace', index=False)
+        df.to_sql(table_name, c, if_exists=exists_action, index=False)
 
 def sync_to_drive():
     g_conn = st.connection("gsheets", type=GSheetsConnection)

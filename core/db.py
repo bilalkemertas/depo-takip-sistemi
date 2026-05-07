@@ -4,7 +4,7 @@ from datetime import datetime
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 
-DB = "depo.db" # BÜTÜN SİSTEM ARTIK TEK BİR DB KULLANACAK
+DB = "depo.db"
 
 def conn():
     return sqlite3.connect(DB, check_same_thread=False)
@@ -14,16 +14,70 @@ def init_db():
     c = conn()
     cur = c.cursor()
 
-    # Bütün modüllerin ihtiyaç duyduğu tüm tablolar burada yaratılıyor
-    cur.execute('''CREATE TABLE IF NOT EXISTS Stok (id INTEGER PRIMARY KEY AUTOINCREMENT, Adres TEXT, Kod TEXT, İsim TEXT, Birim TEXT, Miktar REAL, Durum TEXT)''')
-    cur.execute('''CREATE TABLE IF NOT EXISTS Urun_Listesi (kod TEXT PRIMARY KEY, isim TEXT, Birim TEXT, adres TEXT)''')
-    cur.execute('''CREATE TABLE IF NOT EXISTS Hareketler (id INTEGER PRIMARY KEY AUTOINCREMENT, Tarih TEXT, İşlem TEXT, Kod TEXT, İsim TEXT, Adres TEXT, Miktar REAL, Personel TEXT, Lot TEXT, Kaynak_Adres TEXT, Hedef_Adres TEXT, "İş Emri" TEXT, Durum TEXT)''')
-    cur.execute('''CREATE TABLE IF NOT EXISTS Is_Emirleri ("İş Emri" TEXT, "Ürün Kodu" TEXT, "Mamül Adı" TEXT, "Stok Kodu" TEXT, "Stok Adı" TEXT, "İhtiyaç Miktarı" REAL, "Hazırlanan Adet" REAL, Birim TEXT)''')
-    cur.execute('''CREATE TABLE IF NOT EXISTS Mal_Kabul (Tarih TEXT, Irsaliye_No TEXT, Siparis_No TEXT, Tedarikci TEXT, Kod TEXT, Isim TEXT, Miktar REAL, Adres TEXT, Personel TEXT)''')
-    cur.execute('''CREATE TABLE IF NOT EXISTS sayim_snapshot (Oturum_Adi TEXT, Adres TEXT, Kod TEXT, İsim TEXT, Sistem_Stogu REAL)''')
-    cur.execute('''CREATE TABLE IF NOT EXISTS sayim (Oturum_Adi TEXT, Tarih TEXT, Adres TEXT, Kod TEXT, Miktar REAL, Personel TEXT)''')
-    cur.execute('''CREATE TABLE IF NOT EXISTS blokeli_stok (id INTEGER PRIMARY KEY AUTOINCREMENT, kod TEXT, adres TEXT, miktar REAL, sebep TEXT)''')
-    cur.execute('''CREATE TABLE IF NOT EXISTS audit_log (id INTEGER PRIMARY KEY AUTOINCREMENT, tarih TEXT, user TEXT, action TEXT, detay TEXT)''')
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS stok (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kod TEXT,
+        isim TEXT,
+        adres TEXT,
+        miktar REAL,
+        durum TEXT
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS urun_listesi (
+        kod TEXT PRIMARY KEY,
+        isim TEXT,
+        birim TEXT,
+        adres TEXT
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS hareketler (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tarih TEXT,
+        islem TEXT,
+        kod TEXT,
+        isim TEXT,
+        kaynak TEXT,
+        hedef TEXT,
+        miktar REAL,
+        user TEXT,
+        aciklama TEXT
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS blokeli_stok (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kod TEXT,
+        adres TEXT,
+        miktar REAL,
+        sebep TEXT
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS sayim_snapshot (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        oturum TEXT,
+        kod TEXT,
+        adres TEXT,
+        miktar REAL
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS audit_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tarih TEXT,
+        user TEXT,
+        action TEXT,
+        detay TEXT
+    )
+    """)
 
     c.commit()
     c.close()
@@ -31,14 +85,11 @@ def init_db():
 # ---------------- READ ----------------
 def read(table):
     c = conn()
-    try:
-        df = pd.read_sql_query(f"SELECT * FROM {table}", c)
-    except Exception:
-        df = pd.DataFrame()
+    df = pd.read_sql_query(f"SELECT * FROM {table}", c)
     c.close()
     return df
 
-# ---------------- WRITE (FULL REPLACE) ----------------
+# ---------------- WRITE (FULL REPLACE MVP) ----------------
 def write(table, df):
     c = conn()
     df.to_sql(table, c, if_exists="replace", index=False)
@@ -48,10 +99,17 @@ def write(table, df):
 def log(user, action, detail):
     c = conn()
     cur = c.cursor()
+
     cur.execute("""
         INSERT INTO audit_log (tarih, user, action, detay)
         VALUES (?, ?, ?, ?)
-    """, (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user, action, detail))
+    """, (
+        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        user,
+        action,
+        detail
+    ))
+
     c.commit()
     c.close()
 
@@ -61,29 +119,34 @@ def get_drive_conn():
 
 def sync_to_drive():
     g_conn = get_drive_conn()
+    
     tablolar = {
-        "Stok": "Stok",
-        "Urun_Listesi": "Urun_Listesi",
-        "Hareketler": "Hareketler",
-        "sayim_snapshot": "sayim_snapshot",
-        "Is_Emirleri": "Is_Emirleri"
+        "stok": "Stok",
+        "urun_listesi": "Urun_Listesi",
+        "hareketler": "Hareketler",
+        "blokeli_stok": "Blokeli_Stok",
+        "sayim_snapshot": "Sayim_Snapshot",
+        "audit_log": "Audit_Log"
     }
+    
     for sql_table, sheet_name in tablolar.items():
         try:
             df = read(sql_table)
             if not df.empty:
                 g_conn.update(worksheet=sheet_name, data=df)
-        except Exception:
+        except Exception as e:
             pass
 
 def sync_from_drive():
     g_conn = get_drive_conn()
+    
     tablolar = {
-        "Stok": "Stok",
-        "Urun_Listesi": "Urun_Listesi",
-        "Hareketler": "Hareketler",
-        "sayim_snapshot": "sayim_snapshot",
-        "Is_Emirleri": "Is_Emirleri"
+        "Stok": "stok",
+        "Urun_Listesi": "urun_listesi",
+        "Hareketler": "hareketler",
+        "Blokeli_Stok": "blokeli_stok",
+        "Sayim_Snapshot": "sayim_snapshot",
+        "Audit_Log": "audit_log"
     }
     
     basarili = []
@@ -92,17 +155,15 @@ def sync_from_drive():
     for sheet_name, sql_table in tablolar.items():
         try:
             df = g_conn.read(worksheet=sheet_name, ttl=0)
-            if isinstance(df, pd.DataFrame):
-                df.columns = [str(c).strip() for c in df.columns] # Sütun isimlerini koru
+            if isinstance(df, pd.DataFrame) and not df.empty:
+                df.columns = [str(c).strip().upper() for c in df.columns]
                 write(sql_table, df)
                 basarili.append(sheet_name)
-            else:
-                hatali.append(f"{sheet_name} (Veri formati geçersiz)")
         except Exception as e:
-            hata_mesaji = str(e)
-            if "Response [200]" in hata_mesaji:
-                hatali.append(f"{sheet_name} (Google güvenlik engeli! Lütfen Excel'i 'Web'de Yayınla' yapın)")
+            hata_msj = str(e)
+            if "Response [200]" in hata_msj:
+                hatali.append(f"{sheet_name} (Hata: Google güvenlik engeli. Dosyayı Dosya -> Paylaş -> Web'de Yayınla yapın)")
             else:
-                hatali.append(f"{sheet_name} (Hata: {hata_mesaji[:30]}...)")
+                hatali.append(f"{sheet_name} (Hata: {hata_msj[:50]}...)")
             
     return basarili, hatali

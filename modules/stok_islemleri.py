@@ -5,7 +5,7 @@ from datetime import datetime
 
 def get_katalog():
     try:
-     # Tablo yoksa önce yarat! ---
+        # Tablo yoksa önce yarat! ---
         db.init_db()
         
         df_katalog = db.read("urun_listesi")
@@ -24,8 +24,6 @@ def get_katalog():
     except Exception as e:
         st.error(f"Katalog okuma hatası: {e}")
         return []
-
-
 
 def clear_form():
     st.session_state.reset_form = True
@@ -61,7 +59,6 @@ def run_islem():
         if hatali:
             st.error(f"❌ İndirilemeyenler: {', '.join(hatali)}")
             st.info("💡 Lütfen Drive Excel dosyanızdaki sekme isimlerinin (örn: 'Urun_Listesi') birebir aynı olduğundan emin olun.")
-        # st.rerun() 
 
     st.subheader("📊 Stok Hareketleri (Toplu İşlem)")
     

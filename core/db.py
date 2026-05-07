@@ -1,6 +1,5 @@
 import sqlite3
 import pandas as pd
-import streamlit as st
 
 DB_PATH = "wms.db"
 
@@ -11,7 +10,6 @@ def init_db():
     conn = get_conn()
     cur = conn.cursor()
 
-    # STOK
     cur.execute("""
     CREATE TABLE IF NOT EXISTS stok (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -22,7 +20,6 @@ def init_db():
     )
     """)
 
-    # HAREKETLER
     cur.execute("""
     CREATE TABLE IF NOT EXISTS hareketler (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,7 +33,6 @@ def init_db():
     )
     """)
 
-    # MAL KABUL
     cur.execute("""
     CREATE TABLE IF NOT EXISTS mal_kabul (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,7 +45,6 @@ def init_db():
     )
     """)
 
-    # SAYIM
     cur.execute("""
     CREATE TABLE IF NOT EXISTS sayim (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

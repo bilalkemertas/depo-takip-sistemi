@@ -12,7 +12,7 @@ def get_katalog():
             df_katalog.columns = [str(c).strip().upper() for c in df_katalog.columns]
             kod_col = next((c for c in df_katalog.columns if 'KOD' in c), None)
             isim_col = next((c for c in df_katalog.columns if 'ISIM' in c or 'İSİM' in c), None)
-        if kod_col and isim_col:
+            if kod_col and isim_col:
                 return df_katalog.apply(lambda x: f"{x[kod_col]} | {x[isim_col]}", axis=1).tolist()
         return []
     except Exception as e:
@@ -87,37 +87,34 @@ def run():
 
     if st.session_state.gecici_liste:
         for i, item in enumerate(st.session_state.gecici_liste):
-            with st.expander(f"{i+1}. {item['İşlem']} | {item['Kod']} | {item['Miktar']} Adet"):
+            with st.expander(f"{i+1}. {item['İşlem']} | {item['Kod']} | {item['Miktar']}"):
                 if st.button(f"🗑️ Bu Satırı Sil", key=f"del_{i}"):
                     st.session_state.gecici_liste.pop(i); st.rerun()
 
-        st.divider()
-  if st.button("🚀 TÜM HAREKETLERİ VERİTABANINA İŞLE", use_container_width=True, type="primary"):
-            try:
-                isleme_alinacaklar = list(st.session_state.gecici_liste)
-                st.session_state.gecici_liste = [] 
-                
-                df_stok = db.read("stok")
-                # SÜTUN GARANTİSİ
-               # ... (Üst kısımlar aynı)
         if st.button("🚀 TÜM HAREKETLERİ VERİTABANINA İŞLE", use_container_width=True, type="primary"):
             try:
                 isleme_alinacaklar = list(st.session_state.gecici_liste)
                 st.session_state.gecici_liste = [] 
-                
                 df_stok = db.read("stok")
+                yeni_hkt_df = pd.DataFrame()
+                is_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                personel = st.session_state.get("user", "Sistem")
                 
-                # SÜTUN HATASI (KOD) KESİN ÇÖZÜMÜ
-                if df_stok.empty or 'kod' not in df_stok.columns:
-                    df_stok = pd.DataFrame(columns=["kod", "isim", "adres", "miktar", "durum"])
-                
-                # ... (Döngü ve işlem mantığı aynı)
+                for satir in isleme_alinacaklar:
+                    yeni_hkt = {"tarih": is_time, "islem": satir["İşlem"], "kod": satir["Kod"], "isim": satir["İsim"], "kaynak": satir["Kaynak"], "hedef": satir["Hedef"], "miktar": satir["Miktar"], "user": personel, "aciklama": satir["Lot"]}
+                    yeni_hkt_df = pd.concat([yeni_hkt_df, pd.DataFrame([yeni_hkt])], ignore_index=True)
+                    if satir["İşlem"] == "GİRİŞ":
+                        mask = (df_stok['kod'] == satir["Kod"]) & (df_stok['adres'] == satir["Hedef"])
+                        if mask.any(): df_stok.loc[mask, 'miktar'] += satir["Miktar"]
+                        else: df_stok = pd.concat([df_stok, pd.DataFrame([{"kod": satir["Kod"], "isim": satir["İsim"], "adres": satir["Hedef"], "miktar": satir["Miktar"], "durum": satir["Durum"]}])], ignore_index=True)
+                    elif satir["İşlem"] == "ÇIKIŞ":
+                        mask = (df_stok['kod'] == satir["Kod"]) & (df_stok['adres'] == satir["Kaynak"])
+                        if mask.any(): df_stok.loc[mask, 'miktar'] = max(0, df_stok.loc[mask, 'miktar'].values[0] - satir["Miktar"])
+
                 db.write("hareketler", yeni_hkt_df, exists_action='append')
                 db.write("stok", df_stok, exists_action='replace')
-                
-                db.sync_to_drive() # Excel senkronizasyonu burada tetiklenir
+                db.sync_to_drive()
                 st.session_state["islem_basarili"] = True; st.cache_data.clear(); st.rerun()
-            except Exception as e:
-                st.error(f"İşlem Hatası: {e}")
+            except Exception as e: st.error(f"Hata: {e}")
 
 def run_transfer(): run()

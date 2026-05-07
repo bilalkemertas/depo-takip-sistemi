@@ -87,11 +87,16 @@ def init_db():
 def read(table):
     """Belirtilen tabloyu küçük harf standardıyla DataFrame olarak okur."""
     try:
+        def read(table):
+    """Belirtilen tabloyu okur ve sütun isimlerini standart hale getirir."""
+    try:
         with conn() as c:
-            table_name = table.lower()
-            return pd.read_sql_query(f"SELECT * FROM {table_name}", c)
+            df = pd.read_sql_query(f"SELECT * FROM {table.lower()}", c)
+            if not df.empty:
+                # Sütun isimlerini zorla küçük harf yap (Hata Çözümü)
+                df.columns = [str(c).strip().lower() for c in df.columns]
+            return df
     except Exception as e:
-        # Hata durumunda boş dataframe döner
         return pd.DataFrame()
 
 def write(table, df, exists_action='replace'):

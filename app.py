@@ -133,9 +133,7 @@ else:
             if st.button("✂️\nBlok Kesim", type="primary"):
                 st.session_state.current_module = "blok"
                 st.rerun()
-            if st.button("✂️\nBağlantı Test", type="primary"):
-                st.session_state.current_module = "test"
-                st.rerun()
+           
                 
         with c2:
             # Depo Transfer yerine Teslim Alma eklendi
@@ -148,19 +146,60 @@ else:
             if st.button("✂️\nBağlantı Test", type="primary"):
                 st.session_state.current_module = "test"
                 st.rerun()
+            if st.button("✂️\nBağlantı Test", type="primary"):
+                st.session_state.current_module = "test"
+                st.rerun()     
 
     else:
         # Seçili Modülü Çalıştır
         if st.session_state.current_module == "stok":
             stok_islemleri.run_islem()
-        elif st.session_state.current_module == "teslim":
-            teslim_alma.run()
-        elif st.session_state.current_module == "uretim":
-            uretim_hazirlik.run()
-        elif st.session_state.current_module == "sayim":
-            sayim_modulu.run()
-        elif st.session_state.current_module == "blok":
-            blok_kesim.run()
+       elif st.session_state.current_module == "test":
+            from streamlit_gsheets import GSheetsConnection
+            st.subheader("📡 Google Drive Bağlantı Analizi")
+            
+            with st.status("Bağlantı test ediliyor...", expanded=True) as status:
+                try:
+                    # 1. BAĞLANTI KURMA
+                    st.write("🔍 Google Sheets API bağlantısı deneniyor...")
+                    conn = st.connection("gsheets", type=GSheetsConnection)
+                    
+                    # 2. VERİ OKUMA (Ping)
+                    st.write("📥 'Urun_Listesi' sekmesine erişiliyor...")
+                    # ttl=0 yaparak cache (önbellek) devre dışı bırakıyoruz, gerçek anlık veri gelsin
+                    df = conn.read(worksheet="Urun_Listesi", ttl=0)
+                    
+                    if df is not None and not df.empty:
+                        status.update(label="✅ Bağlantı Başarılı!", state="complete")
+                        st.success("Google Drive ile iletişim kuruldu.")
+                        
+                        st.markdown("### 📊 Sayfa Analizi")
+                        st.write(f"**Okunan Satır Sayısı:** {len(df)}")
+                        st.write(f"**Tespit Edilen Sütunlar:** {df.columns.tolist()}")
+                        
+                        # KRİTİK KONTROL: KOD ve ISIM başlıkları var mı?
+                        st.markdown("### 🛠️ Yazılım Uyumluluk Kontrolü")
+                        cols = [str(c).strip().upper() for c in df.columns]
+                        if "KOD" in cols and ("ISIM" in cols or "İSİM" in cols):
+                            st.success("✅ Sütun başlıkları modül ile uyumlu.")
+                        else:
+                            st.error("❌ Başlık hatası! Excel'deki başlıklar 'KOD' ve 'ISIM' olmalı.")
+                            st.info(f"Senin Excel başlıkların: {df.columns.tolist()}")
+                        
+                        st.markdown("### 📄 Veri Önizleme (İlk 3 Satır)")
+                        st.dataframe(df.head(3))
+                    else:
+                        st.warning("⚠️ Bağlantı kuruldu ama sayfa boş görünüyor.")
+                        
+                except Exception as e:
+                    status.update(label="❌ Bağlantı Başarısız!", state="error")
+                    st.error("Google'dan gelen hata mesajı:")
+                    st.code(str(e))
+                    
+                    if "Response [200]" in str(e):
+                        st.info("💡 **Teşhis:** Google veri yerine bir web sayfası gönderiyor. Ya 'Web'de Yayınla' yapmadın ya da Service Account mailine 'Düzenleyen' yetkisi vermedin.")
+                    elif "404" in str(e):
+                        st.info("💡 **Teşhis:** Spreadsheet URL hatalı. secrets.toml içindeki linki kontrol et.")
             
         # Alt Kısımda Küçük Ana Ekran Butonu
         st.markdown("<br><hr style='margin-bottom: 10px;'>", unsafe_allow_html=True)

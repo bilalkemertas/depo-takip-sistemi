@@ -21,26 +21,30 @@ def init_db():
 def read(table):
     try:
         with conn() as c:
-            # SQLite büyük/küçük harf duyarlılığı için küçük harf zorlaması
             return pd.read_sql_query(f"SELECT * FROM {table.lower()}", c)
     except:
         return pd.DataFrame()
 
-# --- KRİTİK GÜNCELLEME: APPEND HATASINI ÖNLEYEN YAZMA MANTIĞI ---
+# --- HATA ÇÖZÜCÜ: APPEND ÇAKIŞMASINI BİTİREN YAZMA MANTIĞI ---
 def write(table, df, exists_action='replace'):
     with conn() as c:
-        # HATA ÇÖZÜMÜ: Eğer append yapılıyorsa ve 'id' sütunu gelmişse onu drop ediyoruz.
-        # Çünkü SQLite 'id'yi otomatik (Auto Increment) olarak kendi atamalı.
-        if exists_action == 'append' and 'id' in df.columns:
-            df = df.drop(columns=['id'])
+        # 'append' yaparken eğer df içinde 'id' varsa SQLite çıldırıyor.
+        # Tablo zaten var hatasının asıl sebebi bu sütun uyuşmazlığı.
+        if exists_action == 'append':
+            if 'id' in df.columns:
+                df = df.drop(columns=['id'])
             
-        df.to_sql(table.lower(), c, if_exists=exists_action, index=False)
+            # Sadece hedef tabloda olan sütunları gönderiyoruz
+            df.to_sql(table.lower(), c, if_exists='append', index=False)
+        else:
+            # Stok tablosu gibi replace işlemleri için
+            df.to_sql(table.lower(), c, if_exists='replace', index=False)
 
 def sync_to_drive():
     g_conn = st.connection("gsheets", type=GSheetsConnection)
     tablolar = {"stok": "Stok", "hareketler": "Hareketler"}
     for sql_t, sheet_n in tablolar.items():
-        df = db.read(sql_t)
+        df = read(sql_t)
         if not df.empty:
             g_conn.update(worksheet=sheet_n, data=df)
 

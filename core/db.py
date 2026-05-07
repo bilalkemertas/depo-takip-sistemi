@@ -25,10 +25,10 @@ def read(table):
     except:
         return pd.DataFrame()
 
-# --- PATRONUN İSTEDİĞİ VE DÜZELTTİĞİ FONKSİYON ---
+# --- SENİN VERDİĞİN SAF WRITE FONKSİYONU (GELİŞTİRİLMİŞ) ---
 def write(table, df, exists_action='replace'):
     with conn() as c:
-        # exists_action: 'replace' (Stok için), 'append' (Hareketler için)
+        # exists_action 'replace' ise overwrite, 'append' ise insert (insert into) yapar
         df.to_sql(table, c, if_exists=exists_action, index=False)
 
 def sync_to_drive():

@@ -161,14 +161,15 @@ def sync_from_drive():
 def sync_to_drive():
     try:
         g_conn = st.connection("gsheets", type=GSheetsConnection)
-
-        tablolar = {
-            "stok": "Stok",
-            "hareketler": "Hareketler",
-            "mal_kabul": "Mal_Kabul"
-        }
-
+        tablolar = {"stok": "Stok", "hareketler": "Hareketler", "mal_kabul": "Mal_Kabul"}
         for sql_t, sheet_n in tablolar.items():
+            df = read(sql_t)
+            if not df.empty:
+                # Ekranda neyin güncellendiğini görmek için (Debug)
+                # st.info(f"{sheet_n} Drive'a gönderiliyor...") 
+                g_conn.update(worksheet=sheet_n, data=df)
+    except Exception as e:
+        st.error(f"Drive Senkronizasyon Hatası: {e}")
             df = read(sql_t)
 
             if df is not None and not df.empty:

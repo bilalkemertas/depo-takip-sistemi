@@ -152,7 +152,7 @@ def run_islem():
 
         if st.button("🚀 TÜM HAREKETLERİ VERİTABANINA İŞLE", use_container_width=True, type="primary"):
             try:
-                df_stok = db.read("stok")
+                df_stok = db.read("Stok")
                 df_hareketler = db.read("hareketler")
             except Exception as e:
                 st.error(f"Veritabanı okuma hatası: {e}")
@@ -210,7 +210,7 @@ def run_islem():
                     df_hareketler = pd.concat([df_hareketler, pd.DataFrame([yeni_hareket_satiri])], ignore_index=True)
                     kaydedilen_sayi += 1
 
-            db.write("stok", df_stok)
+            db.write("Stok", df_stok)
             db.write("hareketler", df_hareketler)
             
             db.sync_to_drive()

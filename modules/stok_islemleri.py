@@ -16,7 +16,7 @@ def get_katalog():
                 return df_katalog.apply(lambda x: f"{x[kod_col]} | {x[isim_col]}", axis=1).tolist()
         return []
     except Exception as e:
-        st.error(f"Katalog okuma hatası: {e}")
+        st.error(f"Katalog hatası: {e}")
         return []
 
 def clear_form():
@@ -93,7 +93,6 @@ def run_islem():
                 if st.button(f"🗑️ Bu Satırı Sil", key=f"del_{i}"):
                     st.session_state.gecici_liste.pop(i); st.rerun()
 
-        st.divider()
         if st.button("🚀 TÜM HAREKETLERİ VERİTABANINA İŞLE", use_container_width=True, type="primary"):
             try:
                 isleme_alinacaklar = list(st.session_state.gecici_liste)
@@ -120,9 +119,9 @@ def run_islem():
                         mask = (df_stok['kod'] == satir["Kod"]) & (df_stok['adres'] == satir["Kaynak"])
                         if mask.any(): df_stok.loc[mask, 'miktar'] = max(0, df_stok.loc[mask, 'miktar'].values[0] - satir["Miktar"])
 
-                # --- DEBUG VE KESİN ÇÖZÜM ---
-                db.write("hareketler", yeni_hkt_df, exists_action='append')
-                db.write("stok", df_stok, exists_action='replace')
+                # --- PATRONUN KESİN ÇÖZÜMÜ: SADECE DB.WRITE ---
+                db.write("hareketler", yeni_hkt_df, "append")
+                db.write("stok", df_stok, "replace")
                 
                 db.sync_to_drive()
                 st.session_state["islem_basarili"] = True; st.cache_data.clear(); st.rerun()

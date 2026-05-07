@@ -21,19 +21,21 @@ def init_db():
 def read(table):
     try:
         with conn() as c:
-            # Tablo ismini her zaman küçük harfe zorla (SQLite hatasını önler)
             return pd.read_sql_query(f"SELECT * FROM {table.lower()}", c)
     except:
         return pd.DataFrame()
 
 def write(table, df, exists_action='replace'):
     with conn() as c:
-        # Tablo ismini küçük harf yaparak SQLite ile tam uyum sağla
+        # Hata Çözümü: Eğer append yapıyorsak ve df içinde 'id' varsa onu atıyoruz. 
+        # Çünkü SQLite 'id'yi otomatik vermeli.
+        if exists_action == 'append' and 'id' in df.columns:
+            df = df.drop(columns=['id'])
+            
         df.to_sql(table.lower(), c, if_exists=exists_action, index=False)
 
 def sync_to_drive():
     g_conn = st.connection("gsheets", type=GSheetsConnection)
-    # Drive'daki sekmelerin isimleri (Stok, Hareketler)
     tablolar = {"stok": "Stok", "hareketler": "Hareketler"}
     for sql_t, sheet_n in tablolar.items():
         df = read(sql_t)

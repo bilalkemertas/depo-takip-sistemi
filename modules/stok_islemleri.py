@@ -56,6 +56,8 @@ def run_islem():
         
         if basarili:
             st.success(f"✅ Başarıyla İnenler: {', '.join(basarili)}")
+            # KRİTİK: Liste geldikten sonra sayfayı zorla yenile ki selectbox dolsun
+            st.rerun() 
         if hatali:
             st.error(f"❌ İndirilemeyenler: {', '.join(hatali)}")
             st.info("💡 Lütfen Drive Excel dosyanızdaki sekme isimlerinin (örn: 'Urun_Listesi') birebir aynı olduğundan emin olun.")
@@ -69,6 +71,7 @@ def run_islem():
             key="move_type"
         )
         
+        # KATALOG VERİSİNİ BURADA ÇEKİYORUZ
         katalog = get_katalog()
         sec = st.selectbox(
             "🔍 Ürün Seç:", 
@@ -109,10 +112,15 @@ def run_islem():
             if not s_kod or s_mik <= 0:
                 st.error("Eksik bilgi!")
             else:
+                # İsim eşleşmesini güvenli yapalım
+                kalem_ismi = "MANUEL ÜRÜN"
+                if sec != "+ MANUEL GİRİŞ" and " | " in sec:
+                    kalem_ismi = sec.split(" | ")[1]
+
                 kalem = {
                     "İşlem": move_type,
                     "Kod": s_kod,
-                    "İsim": sec.split(" | ")[1] if sec != "+ MANUEL GİRİŞ" and len(sec.split(" | ")) > 1 else "MANUEL ÜRÜN",
+                    "İsim": kalem_ismi,
                     "Miktar": s_mik,
                     "Lot": s_lot,
                     "Durum": s_dur,
@@ -153,6 +161,7 @@ def run_islem():
             islem_zamani = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             personel = st.session_state.user if 'user' in st.session_state else "Sistem"
             
+            # Sütun emniyet kemerleri
             if 'kod' not in df_stok.columns: df_stok['kod'] = ""
             if 'adres' not in df_stok.columns: df_stok['adres'] = ""
             if 'miktar' not in df_stok.columns: df_stok['miktar'] = 0.0

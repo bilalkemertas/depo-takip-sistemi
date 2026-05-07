@@ -92,7 +92,7 @@ def read(table):
     try:
         with conn() as c:
             df = pd.read_sql_query(f"SELECT * FROM {table.lower()}", c)
-            if not df.empty:
+           if not df.empty:
                 # Sütun isimlerini zorla küçük harf yap (Hata Çözümü)
                 df.columns = [str(c).strip().lower() for c in df.columns]
             return df

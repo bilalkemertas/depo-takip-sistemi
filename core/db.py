@@ -7,7 +7,6 @@ from streamlit_gsheets import GSheetsConnection
 DB = "depo.db"
 
 def conn():
-    # Timeout'u artırdık ki 'Database is locked' hatası vermesin
     return sqlite3.connect(DB, check_same_thread=False, timeout=60)
 
 def init_db():
@@ -26,17 +25,19 @@ def read(table):
     except:
         return pd.DataFrame()
 
-# --- PATRONUN İSTEDİĞİ SAF VE ÇALIŞAN WRITE ---
+# --- GÜVENLİ WRITE: DEFAULT 'FAIL' MODUNU YASAKLADIK ---
 def write(table, df, exists_action='replace'):
     with conn() as c:
         table_name = table.lower()
         
-        # Eğer 'id' sütunu df içinde varsa ve append yapıyorsak SQLite hata verir.
-        # Bu yüzden append işleminde id'yi sessizce düşürüp SQLite'ın insafına bırakıyoruz.
-        if exists_action == 'append' and 'id' in df.columns:
+        # Hata Analizi: Eğer bir şekilde parametre gelmezse 'fail' yerine 'replace' yap
+        action = exists_action if exists_action in ['append', 'replace'] else 'replace'
+        
+        # Append sırasında id çakışmasını engelle
+        if action == 'append' and 'id' in df.columns:
             df = df.drop(columns=['id'])
             
-        df.to_sql(table_name, c, if_exists=exists_action, index=False)
+        df.to_sql(table_name, c, if_exists=action, index=False)
 
 def sync_to_drive():
     g_conn = st.connection("gsheets", type=GSheetsConnection)

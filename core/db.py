@@ -21,22 +21,24 @@ def init_db():
 def read(table):
     try:
         with conn() as c:
-            return pd.read_sql_query(f"SELECT * FROM {table}", c)
+            # Tablo ismini her zaman küçük harfe zorla (SQLite hatasını önler)
+            return pd.read_sql_query(f"SELECT * FROM {table.lower()}", c)
     except:
         return pd.DataFrame()
 
-# --- SENİN VERDİĞİN SAF WRITE FONKSİYONU (GELİŞTİRİLMİŞ) ---
 def write(table, df, exists_action='replace'):
     with conn() as c:
-        # exists_action 'replace' ise overwrite, 'append' ise insert (insert into) yapar
-        df.to_sql(table, c, if_exists=exists_action, index=False)
+        # Tablo ismini küçük harf yaparak SQLite ile tam uyum sağla
+        df.to_sql(table.lower(), c, if_exists=exists_action, index=False)
 
 def sync_to_drive():
     g_conn = st.connection("gsheets", type=GSheetsConnection)
-    for t in ["stok", "hareketler"]:
-        df = read(t)
+    # Drive'daki sekmelerin isimleri (Stok, Hareketler)
+    tablolar = {"stok": "Stok", "hareketler": "Hareketler"}
+    for sql_t, sheet_n in tablolar.items():
+        df = read(sql_t)
         if not df.empty:
-            g_conn.update(worksheet=t.capitalize(), data=df)
+            g_conn.update(worksheet=sheet_n, data=df)
 
 def sync_from_drive():
     g_conn = st.connection("gsheets", type=GSheetsConnection)

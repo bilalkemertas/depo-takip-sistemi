@@ -202,7 +202,7 @@ def run_islem():
                         kaydedilen_sayi += 1
 
                 # 3. YAZMA VE SENKRONİZE ET
-                db.write("hareketler", yeni_hkt_df, exists_action='append')
+                db.write("Hareketler", yeni_hkt_df, exists_action='append')
                 db.write("stok", df_stok, exists_action='replace')
                 
                 db.sync_to_drive()

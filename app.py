@@ -145,6 +145,9 @@ else:
             if st.button("📋\nSayım Modülü", type="primary"):
                 st.session_state.current_module = "sayim"
                 st.rerun()
+            if st.button("✂️\nBağlantı Test", type="primary"):
+                st.session_state.current_module = "test"
+                st.rerun()
 
     else:
         # Seçili Modülü Çalıştır

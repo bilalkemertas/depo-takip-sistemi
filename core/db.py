@@ -21,6 +21,7 @@ def init_db():
 def read(table):
     try:
         with conn() as c:
+            # Tablo ismini küçük harfe zorlayarak SQLite uyumunu garanti et
             return pd.read_sql_query(f"SELECT * FROM {table.lower()}", c)
     except:
         return pd.DataFrame()
@@ -28,17 +29,22 @@ def read(table):
 # --- HATA ÇÖZÜCÜ: APPEND ÇAKIŞMASINI BİTİREN YAZMA MANTIĞI ---
 def write(table, df, exists_action='replace'):
     with conn() as c:
-        # 'append' yaparken eğer df içinde 'id' varsa SQLite çıldırıyor.
-        # Tablo zaten var hatasının asıl sebebi bu sütun uyuşmazlığı.
+        table_name = table.lower()
+        
         if exists_action == 'append':
-            if 'id' in df.columns:
-                df = df.drop(columns=['id'])
+            # Veritabanındaki gerçek sütun isimlerini al
+            cursor = c.execute(f"PRAGMA table_info({table_name})")
+            db_cols = [col[1] for col in cursor.fetchall()]
             
-            # Sadece hedef tabloda olan sütunları gönderiyoruz
-            df.to_sql(table.lower(), c, if_exists='append', index=False)
+            # DataFrame içindeki sütunları veritabanındakilerle eşle (id hariç)
+            # Eğer df içinde 'id' varsa onu düşür, SQLite kendi versin
+            cols_to_keep = [col for col in df.columns if col in db_cols and col != 'id']
+            df_to_save = df[cols_to_keep]
+            
+            df_to_save.to_sql(table_name, c, if_exists='append', index=False)
         else:
-            # Stok tablosu gibi replace işlemleri için
-            df.to_sql(table.lower(), c, if_exists='replace', index=False)
+            # Stok tablosu gibi 'replace' işlemleri için standart yol
+            df.to_sql(table_name, c, if_exists='replace', index=False)
 
 def sync_to_drive():
     g_conn = st.connection("gsheets", type=GSheetsConnection)

@@ -89,6 +89,7 @@ def write(table, df, exists_action='replace'):
     with conn() as c:
         table_name = table.lower()
         if exists_action == 'append':
+            # SQLite Auto-Increment id ile Pandas'ın çakışmasını engelle
             if 'id' in df.columns:
                 df = df.drop(columns=['id'])
             df.to_sql(table_name, c, if_exists='append', index=False)

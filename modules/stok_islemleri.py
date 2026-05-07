@@ -143,9 +143,9 @@ def run_islem():
 
         if st.button("🚀 TÜM HAREKETLERİ VERİTABANINA İŞLE", use_container_width=True, type="primary"):
             try:
-                # --- VAGONLARI KOPARAN KESİN HAMLE ---
-                isleme_alinacak_liste = list(st.session_state.gecici_liste)
-                st.session_state.gecici_liste = [] # ÖNCE LİSTEYİ SİLİYORUZ (ZORUNLU TAHLİYE)
+                # --- SQLITE SENKRONİZASYON HATASINI ÇÖZEN KRİTİK BLOK ---
+                isleme_alinacaklar = list(st.session_state.gecici_liste)
+                st.session_state.gecici_liste = [] # Hafızayı hemen boşalt ki vagon yapmasın
                 
                 df_stok = db.read("stok")
                 df_hareketler = db.read("hareketler")
@@ -153,23 +153,14 @@ def run_islem():
                 islem_zamani = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 personel = st.session_state.user if 'user' in st.session_state else "Sistem"
                 
-                if 'kod' not in df_stok.columns: df_stok['kod'] = ""
-                if 'adres' not in df_stok.columns: df_stok['adres'] = ""
-                if 'miktar' not in df_stok.columns: df_stok['miktar'] = 0.0
-
-                df_stok['kod'] = df_stok['kod'].astype(str).str.strip().str.upper()
-                df_stok['adres'] = df_stok['adres'].astype(str).str.strip().str.upper()
-                df_stok['miktar'] = pd.to_numeric(df_stok['miktar'], errors='coerce').fillna(0)
+                # Veri tipi zorlaması (Mükerrer kontrolü için şart)
+                df_stok['kod'] = df_stok['kod'].astype(str).str.strip().upper()
+                df_stok['adres'] = df_stok['adres'].astype(str).str.strip().upper()
 
                 kaydedilen_sayi = 0
-                for satir in isleme_alinacak_liste:
-                    yeni_hareket_satiri = {
-                        "tarih": islem_zamani, "islem": satir["İşlem"], "kod": satir["Kod"],
-                        "isim": satir["İsim"], "kaynak": satir["Kaynak"], "hedef": satir["Hedef"],
-                        "miktar": satir["Miktar"], "user": personel, "aciklama": satir["Lot"]
-                    }
+                for satir in isleme_alinacaklar:
+                    yeni_hkt = {"tarih": islem_zamani, "islem": satir["İşlem"], "kod": satir["Kod"], "isim": satir["İsim"], "kaynak": satir["Kaynak"], "hedef": satir["Hedef"], "miktar": satir["Miktar"], "user": personel, "aciklama": satir["Lot"]}
                     
-                    success_stok = False
                     if satir["İşlem"] == "GİRİŞ":
                         mask = (df_stok['kod'] == satir["Kod"]) & (df_stok['adres'] == satir["Hedef"])
                         if mask.any(): 
@@ -177,26 +168,22 @@ def run_islem():
                         else:
                             new_row = pd.DataFrame([{"kod": satir["Kod"], "isim": satir["İsim"], "adres": satir["Hedef"], "miktar": satir["Miktar"], "durum": satir["Durum"]}])
                             df_stok = pd.concat([df_stok, new_row], ignore_index=True)
-                        success_stok = True
                     elif satir["İşlem"] == "ÇIKIŞ":
                         mask = (df_stok['kod'] == satir["Kod"]) & (df_stok['adres'] == satir["Kaynak"])
                         if mask.any():
-                            mevcut = df_stok.loc[mask, 'miktar'].values[0]
-                            df_stok.loc[mask, 'miktar'] = max(0, mevcut - satir["Miktar"])
-                            success_stok = True
+                            df_stok.loc[mask, 'miktar'] = max(0, df_stok.loc[mask, 'miktar'].values[0] - satir["Miktar"])
 
-                    if success_stok:
-                        df_hareketler = pd.concat([df_hareketler, pd.DataFrame([yeni_hareket_satiri])], ignore_index=True)
-                        kaydedilen_sayi += 1
+                    df_hareketler = pd.concat([df_hareketler, pd.DataFrame([yeni_hkt])], ignore_index=True)
+                    kaydedilen_sayi += 1
 
-                # 3. YAZ VE SENKRONİZE ET
+                # SQLite'a yaz ve Drive'ı zorla güncelle
                 db.write("stok", df_stok)
                 db.write("hareketler", df_hareketler)
                 db.sync_to_drive()
                 
                 st.session_state["islem_basarili"] = True
-                st.session_state["mesaj"] = f"✅ {kaydedilen_sayi} kalem başarıyla işlendi."
-                st.cache_data.clear()
+                st.session_state["mesaj"] = f"✅ {kaydedilen_sayi} kalem işlendi."
+                st.cache_data.clear() # Cache'i temizle ki Stok sekmesi yeni halini görsün
                 st.rerun()
             except Exception as e:
                 st.error(f"Hata: {e}")

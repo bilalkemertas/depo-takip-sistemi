@@ -114,6 +114,10 @@ def run_islem():
             if not s_kod or s_mik <= 0:
                 st.error("Eksik bilgi!")
             else:
+                # --- PATRONUN İSTEDİĞİ ADRES TEMİZLİĞİ ---
+                final_src = src_adr if move_type in ["ÇIKIŞ", "İÇ TRANSFER"] else "-"
+                final_dst = dst_adr if move_type in ["GİRİŞ", "İÇ TRANSFER"] else "-"
+                
                 kalem = {
                     "İşlem": move_type,
                     "Kod": s_kod,
@@ -121,8 +125,8 @@ def run_islem():
                     "Miktar": s_mik,
                     "Lot": s_lot,
                     "Durum": s_dur,
-                    "Kaynak": src_adr,
-                    "Hedef": dst_adr
+                    "Kaynak": final_src,
+                    "Hedef": final_dst
                 }
                 st.session_state.gecici_liste.append(kalem)
                 clear_form()
@@ -148,7 +152,6 @@ def run_islem():
                 st.session_state.gecici_liste = [] 
                 
                 df_stok = db.read("stok")
-                # Hareketler için geçmişi okumuyoruz (Overwrite etmeyeceğiz!)
                 yeni_hkt_df = pd.DataFrame()
 
                 islem_zamani = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -182,15 +185,24 @@ def run_islem():
                             mevcut = df_stok.loc[mask, 'miktar'].values[0]
                             df_stok.loc[mask, 'miktar'] = max(0, mevcut - satir["Miktar"])
                             success_stok = True
+                    elif satir["İşlem"] == "İÇ TRANSFER":
+                        src_mask = (df_stok['kod'] == satir["Kod"]) & (df_stok['adres'] == satir["Kaynak"])
+                        dst_mask = (df_stok['kod'] == satir["Kod"]) & (df_stok['adres'] == satir["Hedef"])
+                        if src_mask.any():
+                            mevcut_src = df_stok.loc[src_mask, 'miktar'].values[0]
+                            df_stok.loc[src_mask, 'miktar'] = max(0, mevcut_src - satir["Miktar"])
+                            if dst_mask.any(): 
+                                df_stok.loc[dst_mask, 'miktar'] += satir["Miktar"]
+                            else:
+                                new_row = pd.DataFrame([{"kod": satir["Kod"], "isim": satir["İsim"], "adres": satir["Hedef"], "miktar": satir["Miktar"], "durum": satir["Durum"]}])
+                                df_stok = pd.concat([df_stok, new_row], ignore_index=True)
+                            success_stok = True
 
                     if success_stok:
                         kaydedilen_sayi += 1
 
-                # 3. YAZMA VE SENKRONİZE ET (PATRONUN KESİN ÇÖZÜMÜ)
-                # Hareketleri OVERWRITE ETME, sadece ekle (append)
+                # 3. YAZMA VE SENKRONİZE ET
                 db.write("hareketler", yeni_hkt_df, exists_action='append')
-                
-                # Stokları overwrite et (Güncel bakiye için replace şart)
                 db.write("stok", df_stok, exists_action='replace')
                 
                 db.sync_to_drive()

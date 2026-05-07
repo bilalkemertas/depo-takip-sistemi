@@ -10,15 +10,17 @@ def get_katalog():
         
         df_katalog = db.read("urun_listesi")
         if not df_katalog.empty:
-            df_katalog.columns = [str(c).strip().upper() for c in df_katalog.columns]
+            # Sütunları temizle ve küçük harf yap (Eşleşme için)
+            df_katalog.columns = [str(c).strip().lower() for c in df_katalog.columns]
             
-            kod_col = next((c for c in df_katalog.columns if 'KOD' in c), None)
-            isim_col = next((c for c in df_katalog.columns if 'ISIM' in c or 'İSİM' in c), None)
+            # Hem küçük hem büyük harf başlıkları yakalar
+            kod_col = next((c for c in df_katalog.columns if 'kod' in c), None)
+            isim_col = next((c for c in df_katalog.columns if 'isim' in c), None)
             
             if kod_col and isim_col:
                 return df_katalog.apply(lambda x: f"{x[kod_col]} | {x[isim_col]}", axis=1).tolist()
             else:
-                st.error("Urun_Listesi tablosunda 'KOD' ve 'İSİM' sütunları bulunamadı!")
+                st.error("Urun_Listesi tablosunda 'kod' ve 'isim' sütunları bulunamadı!")
                 return []
         return []
     except Exception as e:
@@ -56,8 +58,7 @@ def run_islem():
         
         if basarili:
             st.success(f"✅ Başarıyla İnenler: {', '.join(basarili)}")
-            # KRİTİK: Liste geldikten sonra sayfayı zorla yenile ki selectbox dolsun
-            st.rerun() 
+            st.rerun()
         if hatali:
             st.error(f"❌ İndirilemeyenler: {', '.join(hatali)}")
             st.info("💡 Lütfen Drive Excel dosyanızdaki sekme isimlerinin (örn: 'Urun_Listesi') birebir aynı olduğundan emin olun.")
@@ -71,7 +72,6 @@ def run_islem():
             key="move_type"
         )
         
-        # KATALOG VERİSİNİ BURADA ÇEKİYORUZ
         katalog = get_katalog()
         sec = st.selectbox(
             "🔍 Ürün Seç:", 
@@ -112,15 +112,10 @@ def run_islem():
             if not s_kod or s_mik <= 0:
                 st.error("Eksik bilgi!")
             else:
-                # İsim eşleşmesini güvenli yapalım
-                kalem_ismi = "MANUEL ÜRÜN"
-                if sec != "+ MANUEL GİRİŞ" and " | " in sec:
-                    kalem_ismi = sec.split(" | ")[1]
-
                 kalem = {
                     "İşlem": move_type,
                     "Kod": s_kod,
-                    "İsim": kalem_ismi,
+                    "İsim": sec.split(" | ")[1] if sec != "+ MANUEL GİRİŞ" and len(sec.split(" | ")) > 1 else "MANUEL ÜRÜN",
                     "Miktar": s_mik,
                     "Lot": s_lot,
                     "Durum": s_dur,
@@ -152,7 +147,7 @@ def run_islem():
 
         if st.button("🚀 TÜM HAREKETLERİ VERİTABANINA İŞLE", use_container_width=True, type="primary"):
             try:
-                df_stok = db.read("Stok")
+                df_stok = db.read("stok")
                 df_hareketler = db.read("hareketler")
             except Exception as e:
                 st.error(f"Veritabanı okuma hatası: {e}")
@@ -161,7 +156,6 @@ def run_islem():
             islem_zamani = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             personel = st.session_state.user if 'user' in st.session_state else "Sistem"
             
-            # Sütun emniyet kemerleri
             if 'kod' not in df_stok.columns: df_stok['kod'] = ""
             if 'adres' not in df_stok.columns: df_stok['adres'] = ""
             if 'miktar' not in df_stok.columns: df_stok['miktar'] = 0.0
@@ -210,7 +204,7 @@ def run_islem():
                     df_hareketler = pd.concat([df_hareketler, pd.DataFrame([yeni_hareket_satiri])], ignore_index=True)
                     kaydedilen_sayi += 1
 
-            db.write("Stok", df_stok)
+            db.write("stok", df_stok)
             db.write("hareketler", df_hareketler)
             
             db.sync_to_drive()
@@ -221,27 +215,6 @@ def run_islem():
             st.session_state.gecici_liste = []
             st.cache_data.clear()
             st.rerun()
-            def get_katalog():
-    try:
-        db.init_db()
-        df_katalog = db.read("urun_listesi")
-        if not df_katalog.empty:
-            # Sütunları temizle ve küçük harf yap (Eşleşme için)
-            df_katalog.columns = [str(c).strip().lower() for c in df_katalog.columns]
-            
-            # Hem küçük hem büyük harf başlıkları yakalar
-            kod_col = next((c for c in df_katalog.columns if 'kod' in c), None)
-            isim_col = next((c for c in df_katalog.columns if 'isim' in c), None)
-            
-            if kod_col and isim_col:
-                return df_katalog.apply(lambda x: f"{x[kod_col]} | {x[isim_col]}", axis=1).tolist()
-            else:
-                st.error("Urun_Listesi tablosunda 'kod' ve 'isim' sütunları bulunamadı!")
-                return []
-        return []
-    except Exception as e:
-        st.error(f"Katalog okuma hatası: {e}")
-        return []
 
 def run_transfer():
     run_islem()

@@ -5,27 +5,27 @@ from datetime import datetime
 
 def get_katalog():
     try:
-        # Tablo yoksa önce yarat! ---
+     # Tablo yoksa önce yarat! ---
         db.init_db()
         
         df_katalog = db.read("urun_listesi")
         if not df_katalog.empty:
-            # Sütunları temizle ve küçük harf yap (Eşleşme için)
-            df_katalog.columns = [str(c).strip().lower() for c in df_katalog.columns]
+            df_katalog.columns = [str(c).strip().upper() for c in df_katalog.columns]
             
-            # Hem küçük hem büyük harf başlıkları yakalar
-            kod_col = next((c for c in df_katalog.columns if 'kod' in c), None)
-            isim_col = next((c for c in df_katalog.columns if 'isim' in c), None)
+            kod_col = next((c for c in df_katalog.columns if 'KOD' in c), None)
+            isim_col = next((c for c in df_katalog.columns if 'ISIM' in c or 'İSİM' in c), None)
             
             if kod_col and isim_col:
                 return df_katalog.apply(lambda x: f"{x[kod_col]} | {x[isim_col]}", axis=1).tolist()
             else:
-                st.error("Urun_Listesi tablosunda 'kod' ve 'isim' sütunları bulunamadı!")
+                st.error("Urun_Listesi tablosunda 'KOD' ve 'İSİM' sütunları bulunamadı!")
                 return []
         return []
     except Exception as e:
         st.error(f"Katalog okuma hatası: {e}")
         return []
+
+
 
 def clear_form():
     st.session_state.reset_form = True
@@ -58,10 +58,10 @@ def run_islem():
         
         if basarili:
             st.success(f"✅ Başarıyla İnenler: {', '.join(basarili)}")
-            st.rerun()
         if hatali:
             st.error(f"❌ İndirilemeyenler: {', '.join(hatali)}")
             st.info("💡 Lütfen Drive Excel dosyanızdaki sekme isimlerinin (örn: 'Urun_Listesi') birebir aynı olduğundan emin olun.")
+        # st.rerun() 
 
     st.subheader("📊 Stok Hareketleri (Toplu İşlem)")
     
@@ -166,10 +166,17 @@ def run_islem():
 
             kaydedilen_sayi = 0
             for satir in st.session_state.gecici_liste:
+                # --- HAREKET KAYDI BURADA OLUŞUYOR (KIRPILAN KISIM) ---
                 yeni_hareket_satiri = {
-                    "tarih": islem_zamani, "islem": satir["İşlem"], "kod": satir["Kod"],
-                    "isim": satir["İsim"], "kaynak": satir["Kaynak"], "hedef": satir["Hedef"],
-                    "miktar": satir["Miktar"], "user": personel, "aciklama": satir["Lot"]
+                    "tarih": islem_zamani, 
+                    "islem": satir["İşlem"], 
+                    "kod": satir["Kod"],
+                    "isim": satir["İsim"], 
+                    "kaynak": satir["Kaynak"], 
+                    "hedef": satir["Hedef"],
+                    "miktar": satir["Miktar"], 
+                    "user": personel, 
+                    "aciklama": satir["Lot"]
                 }
                 
                 success_stok = False
@@ -201,6 +208,7 @@ def run_islem():
                         success_stok = True
 
                 if success_stok:
+                    # --- HAREKETLER TABLOSUNA EKLEME YAPILIYOR ---
                     df_hareketler = pd.concat([df_hareketler, pd.DataFrame([yeni_hareket_satiri])], ignore_index=True)
                     kaydedilen_sayi += 1
 

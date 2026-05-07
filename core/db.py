@@ -85,32 +85,35 @@ def init_db():
 # ---------------- READ ----------------
 def read(table):
     c = conn()
-    df = pd.read_sql_query(f"SELECT * FROM {table}", c)
+    try:
+        df = pd.read_sql_query(f"SELECT * FROM {table}", c)
+    except:
+        df = pd.DataFrame()
     c.close()
     return df
 
-# ---------------- WRITE (REFERANS KOD - FIX) ----------------
+# ---------------- WRITE (TABLO ÇAKIŞMASINI ÇÖZEN KISIM) ----------------
 def write(table, df):
     c = conn()
-    # "Already exists" hatasını önlemek için if_exists="replace" kullanıyoruz
-    df.to_sql(table, c, if_exists="replace", index=False)
-    c.close()
+    try:
+        # Tablo varsa içini tamamen sil ve yeni veriyi yaz (Eski kilitleri aşar)
+        df.to_sql(table, c, if_exists="replace", index=False)
+    except Exception as e:
+        # Eğer hala hata verirse tabloyu zorla düşür ve baştan yarat
+        cur = c.cursor()
+        cur.execute(f"DROP TABLE IF EXISTS {table}")
+        df.to_sql(table, c, if_exists="replace", index=False)
+    finally:
+        c.close()
 
 # ---------------- LOG ----------------
 def log(user, action, detail):
     c = conn()
     cur = c.cursor()
-
     cur.execute("""
         INSERT INTO audit_log (tarih, user, action, detay)
         VALUES (?, ?, ?, ?)
-    """, (
-        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        user,
-        action,
-        detail
-    ))
-
+    """, (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user, action, detail))
     c.commit()
     c.close()
 
@@ -120,48 +123,28 @@ def get_drive_conn():
 
 def sync_to_drive():
     g_conn = get_drive_conn()
-    
-    tablolar = {
-        "stok": "Stok",
-        "urun_listesi": "Urun_Listesi",
-        "hareketler": "Hareketler",
-        "blokeli_stok": "Blokeli_Stok",
-        "sayim_snapshot": "Sayim_Snapshot",
-        "audit_log": "Audit_Log"
-    }
-    
+    tablolar = {"stok": "Stok", "urun_listesi": "Urun_Listesi", "hareketler": "Hareketler"}
     for sql_table, sheet_name in tablolar.items():
         try:
             df = read(sql_table)
             if not df.empty:
                 g_conn.update(worksheet=sheet_name, data=df)
-        except Exception as e:
-            pass
+        except: pass
 
 def sync_from_drive():
     g_conn = get_drive_conn()
-    
     tablolar = {
-        "Stok": "stok",
-        "Urun_Listesi": "urun_listesi",
-        "Hareketler": "hareketler",
-        "Blokeli_Stok": "blokeli_stok",
-        "Sayim_Snapshot": "sayim_snapshot",
-        "Audit_Log": "audit_log"
+        "Stok": "stok", "Urun_Listesi": "urun_listesi", "Hareketler": "hareketler",
+        "Blokeli_Stok": "blokeli_stok", "Sayim_Snapshot": "sayim_snapshot", "Audit_Log": "audit_log"
     }
-    
-    basarili = []
-    hatali = []
-    
+    basarili, hatali = [], []
     for sheet_name, sql_table in tablolar.items():
         try:
             df = g_conn.read(worksheet=sheet_name, ttl=0)
             if isinstance(df, pd.DataFrame) and not df.empty:
-                # Görseldeki gibi küçük harf başlıklar için standartlaştırma:
                 df.columns = [str(c).strip().lower() for c in df.columns]
                 write(sql_table, df)
                 basarili.append(sheet_name)
         except Exception as e:
-            hatali.append(f"{sheet_name} (Hata: {str(e)[:30]}...)")
-            
+            hatali.append(f"{sheet_name}")
     return basarili, hatali

@@ -85,14 +85,11 @@ def init_db():
         c.commit()
 
 def read(table):
-    """Belirtilen tabloyu küçük harf standardıyla DataFrame olarak okur."""
-    try:
-        def read(table):
     """Belirtilen tabloyu okur ve sütun isimlerini standart hale getirir."""
     try:
         with conn() as c:
             df = pd.read_sql_query(f"SELECT * FROM {table.lower()}", c)
-           if not df.empty:
+            if not df.empty:
                 # Sütun isimlerini zorla küçük harf yap (Hata Çözümü)
                 df.columns = [str(c).strip().lower() for c in df.columns]
             return df
@@ -114,7 +111,6 @@ def write(table, df, exists_action='replace'):
                 df = df.drop(columns=['id'])
             
             # SADECE VERİTABANINDA OLAN SÜTUNLARI GÖNDER
-            # Bu kısım tablo yapısını korumak için kritiktir.
             df.to_sql(table_name, c, if_exists='append', index=False)
         else:
             # Standart replace işlemi (Komple güncelleme)
@@ -146,7 +142,6 @@ def sync_to_drive():
         for sql_t, sheet_n in tablolar.items():
             df = read(sql_t)
             if not df.empty:
-                # Drive tarafına yazarken id sütununu da ekleyebiliriz (Takip için)
                 g_conn.update(worksheet=sheet_n, data=df)
     except Exception as e:
         st.error(f"Drive Senkronizasyon Hatası (Buluta Yazılamadı): {e}")

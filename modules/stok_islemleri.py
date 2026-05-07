@@ -1,66 +1,130 @@
-import sqlite3
+import streamlit as st
+from core import db
 import pandas as pd
 from datetime import datetime
-import streamlit as st
-from streamlit_gsheets import GSheetsConnection
 
-DB = "depo.db"
-
-def conn():
-    return sqlite3.connect(DB, check_same_thread=False, timeout=30)
-
-def init_db():
-    with conn() as c:
-        c.execute("PRAGMA journal_mode=WAL;")
-        cur = c.cursor()
-        cur.execute("CREATE TABLE IF NOT EXISTS stok (id INTEGER PRIMARY KEY AUTOINCREMENT, kod TEXT, isim TEXT, adres TEXT, miktar REAL, durum TEXT)")
-        cur.execute("CREATE TABLE IF NOT EXISTS hareketler (id INTEGER PRIMARY KEY AUTOINCREMENT, tarih TEXT, islem TEXT, kod TEXT, isim TEXT, kaynak TEXT, hedef TEXT, miktar REAL, user TEXT, aciklama TEXT)")
-        cur.execute("CREATE TABLE IF NOT EXISTS urun_listesi (kod TEXT PRIMARY KEY, isim TEXT, birim TEXT, adres TEXT)")
-        c.commit()
-
-def read(table):
+@st.cache_data(ttl=600)
+def get_katalog():
     try:
-        with conn() as c:
-            # Tablo ismini küçük harfe zorlayarak SQLite uyumunu garanti et
-            return pd.read_sql_query(f"SELECT * FROM {table.lower()}", c)
-    except:
-        return pd.DataFrame()
+        db.init_db()
+        df_katalog = db.read("urun_listesi")
+        if not df_katalog.empty:
+            df_katalog.columns = [str(c).strip().upper() for c in df_katalog.columns]
+            kod_col = next((c for c in df_katalog.columns if 'KOD' in c), None)
+            isim_col = next((c for c in df_katalog.columns if 'ISIM' in c or 'İSİM' in c), None)
+            if kod_col and isim_col:
+                return df_katalog.apply(lambda x: f"{x[kod_col]} | {x[isim_col]}", axis=1).tolist()
+        return []
+    except Exception as e:
+        st.error(f"Katalog okuma hatası: {e}")
+        return []
 
-# --- HATA ÇÖZÜCÜ: APPEND ÇAKIŞMASINI BİTİREN YAZMA MANTIĞI ---
-def write(table, df, exists_action='replace'):
-    with conn() as c:
-        table_name = table.lower()
+def clear_form():
+    st.session_state.reset_form = True
+
+def urun_secildi():
+    sec = st.session_state.get("sec")
+    if sec and sec != "+ MANUEL GİRİŞ":
+        st.session_state.s_kod = sec.split(" | ")[0]
+
+def run_islem():
+    if "gecici_liste" not in st.session_state:
+        st.session_state.gecici_liste = []
+
+    if st.session_state.get("reset_form"):
+        for k in ["s_kod", "s_lot", "s_mik", "sec", "src_adr", "dst_adr"]:
+            if k in st.session_state:
+                st.session_state[k] = 0.0 if k == "s_mik" else ""
+        st.session_state.reset_form = False
+
+    if st.session_state.get("islem_basarili"):
+        st.success(st.session_state.get("mesaj", "İşlem başarılı"))
+        del st.session_state["islem_basarili"]
+        del st.session_state["mesaj"]
+
+    if st.button("🔄 Drive'dan Katalog İndir", type="secondary"):
+        with st.spinner("Katalog güncelleniyor..."):
+            db.init_db()
+            basarili, hatali = db.sync_from_drive()
+        if basarili:
+            st.success(f"✅ Başarıyla İnenler: {', '.join(basarili)}")
+            st.cache_data.clear()
+        st.rerun()
+
+    st.subheader("📊 Stok Hareketleri (Toplu İşlem)")
+    
+    with st.container(border=True):
+        move_type = st.selectbox("İşlem Tipi:", ["GİRİŞ", "ÇIKIŞ", "İÇ TRANSFER"], key="move_type")
+        katalog = get_katalog()
+        sec = st.selectbox("🔍 Ürün Seç:", ["+ MANUEL GİRİŞ"] + katalog, key="sec", on_change=urun_secildi)
         
-        if exists_action == 'append':
-            # Veritabanındaki gerçek sütun isimlerini al
-            cursor = c.execute(f"PRAGMA table_info({table_name})")
-            db_cols = [col[1] for col in cursor.fetchall()]
-            
-            # DataFrame içindeki sütunları veritabanındakilerle eşle (id hariç)
-            # Eğer df içinde 'id' varsa onu düşür, SQLite kendi versin
-            cols_to_keep = [col for col in df.columns if col in db_cols and col != 'id']
-            df_to_save = df[cols_to_keep]
-            
-            df_to_save.to_sql(table_name, c, if_exists='append', index=False)
-        else:
-            # Stok tablosu gibi 'replace' işlemleri için standart yol
-            df.to_sql(table_name, c, if_exists='replace', index=False)
+        c1, c2 = st.columns(2)
+        with c1:
+            s_kod = st.text_input("📦 Malzeme Kodu:", key="s_kod").upper().strip()
+            s_lot = st.text_input("🔢 Parti/Lot No:", key="s_lot").upper().strip()
+        with c2:
+            s_mik = st.number_input("Miktar:", min_value=0.0, step=1.0, key="s_mik")
+            s_dur = st.selectbox("Durum:", ["Kullanılabilir", "Hasarlı", "Karantina"], key="s_dur")
 
-def sync_to_drive():
-    g_conn = st.connection("gsheets", type=GSheetsConnection)
-    tablolar = {"stok": "Stok", "hareketler": "Hareketler"}
-    for sql_t, sheet_n in tablolar.items():
-        df = read(sql_t)
-        if not df.empty:
-            g_conn.update(worksheet=sheet_n, data=df)
+        st.markdown("---")
+        src_adr, dst_adr = "-", "-"
+        a1, a2 = st.columns(2)
+        if move_type == "GİRİŞ":
+            with a1: dst_adr = st.text_input("📍 Hedef Adres:", key="dst_adr").upper().strip()
+        elif move_type == "ÇIKIŞ":
+            with a1: src_adr = st.text_input("📍 Kaynak Adres:", key="src_adr").upper().strip()
+        elif move_type == "İÇ TRANSFER":
+            with a1: src_adr = st.text_input("📍 Kaynak Adres:", key="src_adr").upper().strip()
+            with a2: dst_adr = st.text_input("📍 Hedef Adres:", key="dst_adr").upper().strip()
 
-def sync_from_drive():
-    g_conn = st.connection("gsheets", type=GSheetsConnection)
-    tablolar = {"Stok": "stok", "Urun_Listesi": "urun_listesi", "Hareketler": "hareketler"}
-    for sheet, sql in tablolar.items():
-        try:
-            df = g_conn.read(worksheet=sheet, ttl=0)
-            if not df.empty:
-                df.columns = [str(c).strip().lower() for c in df.columns]
-                write(sql, df, 'replace')
-        except: pass
+        if st.button("➕ LİSTEYE EKLE", use_container_width=True):
+            if not s_kod or s_mik <= 0:
+                st.error("Eksik bilgi!")
+            else:
+                f_src = src_adr if move_type in ["ÇIKIŞ", "İÇ TRANSFER"] else "-"
+                f_dst = dst_adr if move_type in ["GİRİŞ", "İÇ TRANSFER"] else "-"
+                kalem = {"İşlem": move_type, "Kod": s_kod, "İsim": sec.split(" | ")[1] if " | " in sec else "MANUEL ÜRÜN", "Miktar": s_mik, "Lot": s_lot, "Durum": s_dur, "Kaynak": f_src, "Hedef": f_dst}
+                st.session_state.gecici_liste.append(kalem)
+                clear_form(); st.rerun()
+
+    if st.session_state.gecici_liste:
+        for i, item in enumerate(st.session_state.gecici_liste):
+            with st.expander(f"{i+1}. {item['İşlem']} | {item['Kod']} | {item['Miktar']}"):
+                if st.button(f"🗑️ Bu Satırı Sil", key=f"del_{i}"):
+                    st.session_state.gecici_liste.pop(i); st.rerun()
+
+        if st.button("🚀 TÜM HAREKETLERİ VERİTABANINA İŞLE", use_container_width=True, type="primary"):
+            try:
+                isleme_alinacaklar = list(st.session_state.gecici_liste)
+                st.session_state.gecici_liste = [] 
+                
+                df_stok = db.read("stok")
+                yeni_hkt_df = pd.DataFrame()
+                is_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                personel = st.session_state.get("user", "Sistem")
+                
+                if not df_stok.empty:
+                    df_stok['kod'] = df_stok['kod'].astype(str).str.strip().str.upper()
+                    df_stok['adres'] = df_stok['adres'].astype(str).str.strip().str.upper()
+
+                for satir in isleme_alinacaklar:
+                    yeni_hkt = {"tarih": is_time, "islem": satir["İşlem"], "kod": satir["Kod"], "isim": satir["İsim"], "kaynak": satir["Kaynak"], "hedef": satir["Hedef"], "miktar": satir["Miktar"], "user": personel, "aciklama": satir["Lot"]}
+                    yeni_hkt_df = pd.concat([yeni_hkt_df, pd.DataFrame([yeni_hkt])], ignore_index=True)
+                    
+                    if satir["İşlem"] == "GİRİŞ":
+                        mask = (df_stok['kod'] == satir["Kod"]) & (df_stok['adres'] == satir["Hedef"])
+                        if mask.any(): df_stok.loc[mask, 'miktar'] += satir["Miktar"]
+                        else: df_stok = pd.concat([df_stok, pd.DataFrame([{"kod": satir["Kod"], "isim": satir["İsim"], "adres": satir["Hedef"], "miktar": satir["Miktar"], "durum": satir["Durum"]}])], ignore_index=True)
+                    elif satir["İşlem"] == "ÇIKIŞ":
+                        mask = (df_stok['kod'] == satir["Kod"]) & (df_stok['adres'] == satir["Kaynak"])
+                        if mask.any(): df_stok.loc[mask, 'miktar'] = max(0, df_stok.loc[mask, 'miktar'].values[0] - satir["Miktar"])
+
+                # --- PATRONUN KESİN ÇÖZÜMÜ ---
+                db.write("hareketler", yeni_hkt_df, exists_action='append')
+                db.write("stok", df_stok, exists_action='replace')
+                
+                db.sync_to_drive()
+                st.session_state["islem_basarili"] = True; st.cache_data.clear(); st.rerun()
+            except Exception as e: st.error(f"Hata: {e}")
+
+def run_transfer(): run_islem()

@@ -133,9 +133,7 @@ else:
             if st.button("✂️\nBlok Kesim", type="primary"):
                 st.session_state.current_module = "blok"
                 st.rerun()
-            if st.button("📡\nBağlantı Testi", type="primary"):
-                st.session_state.current_module = "test"
-                st.rerun()
+            
                 
         with c2:
             # Depo Transfer yerine Teslim Alma eklendi
@@ -144,6 +142,9 @@ else:
                 st.rerun()
             if st.button("📋\nSayım Modülü", type="primary"):
                 st.session_state.current_module = "sayim"
+                st.rerun()
+            if st.button("📡\nBağlantı Testi", type="primary"):
+                st.session_state.current_module = "test"
                 st.rerun()
 
     else:

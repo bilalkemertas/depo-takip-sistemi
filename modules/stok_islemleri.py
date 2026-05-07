@@ -36,7 +36,7 @@ def urun_secildi():
     if sec and sec != "+ MANUEL GİRİŞ":
         st.session_state.s_kod = sec.split(" | ")[0]
 
-def run_islem():
+def run(): # <-- APP.PY'DEKİ ÇAĞRIYA UYGUN HALE GETİRİLDİ
     if "gecici_liste" not in st.session_state:
         st.session_state.gecici_liste = []
 
@@ -202,6 +202,3 @@ def run_islem():
                 st.rerun()
             except Exception as e:
                 st.error(f"Hata: {e}")
-
-def run_transfer():
-    run_islem()

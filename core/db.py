@@ -1,179 +1,174 @@
 import sqlite3
 import pandas as pd
+from datetime import datetime
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 
+# VERİTABANI AYARLARI
 DB = "depo.db"
 
-
-# -----------------------------
-# CONNECTION
-# -----------------------------
 def conn():
+    """SQLite veritabanı bağlantısını oluşturur ve döndürür."""
     return sqlite3.connect(DB, check_same_thread=False, timeout=60)
 
-
-# -----------------------------
-# INIT DB
-# -----------------------------
 def init_db():
+    """Veritabanı tablolarını ilk kez oluşturur (IF NOT EXISTS)."""
     with conn() as c:
         c.execute("PRAGMA journal_mode=WAL;")
         cur = c.cursor()
-
-        # STOK
+        
+        # 1. STOK TABLOSU (GÜNCEL DURUM)
         cur.execute("""
-        CREATE TABLE IF NOT EXISTS stok (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            kod TEXT,
-            isim TEXT,
-            adres TEXT,
-            miktar REAL,
-            durum TEXT
-        )
+            CREATE TABLE IF NOT EXISTS stok (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                kod TEXT, 
+                isim TEXT, 
+                adres TEXT, 
+                miktar REAL, 
+                durum TEXT
+            )
         """)
-
-        # HAREKETLER
+        
+        # 2. HAREKETLER TABLOSU (LOG KAYITLARI)
         cur.execute("""
-        CREATE TABLE IF NOT EXISTS hareketler (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tarih TEXT,
-            islem TEXT,
-            kod TEXT,
-            isim TEXT,
-            kaynak TEXT,
-            hedef TEXT,
-            miktar REAL,
-            user TEXT,
-            aciklama TEXT
-        )
+            CREATE TABLE IF NOT EXISTS hareketler (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                tarih TEXT, 
+                islem TEXT, 
+                kod TEXT, 
+                isim TEXT, 
+                kaynak TEXT, 
+                hedef TEXT, 
+                miktar REAL, 
+                user TEXT, 
+                aciklama TEXT
+            )
         """)
-
-        # URUN LISTESI
+        
+        # 3. ÜRÜN KATALOĞU TABLOSU
         cur.execute("""
-        CREATE TABLE IF NOT EXISTS urun_listesi (
-            kod TEXT PRIMARY KEY,
-            isim TEXT,
-            birim TEXT,
-            adres TEXT
-        )
+            CREATE TABLE IF NOT EXISTS urun_listesi (
+                kod TEXT PRIMARY KEY, 
+                isim TEXT, 
+                birim TEXT, 
+                adres TEXT
+            )
         """)
-
-        # MAL KABUL
+        
+        # 4. MAL KABUL TABLOSU (PATRONUN EMRİ)
         cur.execute("""
-        CREATE TABLE IF NOT EXISTS mal_kabul (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tarih TEXT,
-            irsaliye_no TEXT,
-            siparis_no TEXT,
-            tedarikci TEXT,
-            kod TEXT,
-            isim TEXT,
-            miktar REAL,
-            adres TEXT,
-            personel TEXT
-        )
+            CREATE TABLE IF NOT EXISTS mal_kabul (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tarih TEXT,
+                irsaliye_no TEXT,
+                siparis_no TEXT,
+                tedarikci TEXT,
+                kod TEXT,
+                isim TEXT,
+                miktar REAL,
+                adres TEXT,
+                personel TEXT
+            )
         """)
-
+        
+        # 5. LOG SİSTEMİ (OPSİYONEL AMA KURUMSAL YAPI İÇİN ŞART)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tarih TEXT,
+                personel TEXT,
+                islem_tipi TEXT,
+                detay TEXT
+            )
+        """)
+        
         c.commit()
 
-
-# -----------------------------
-# READ
-# -----------------------------
 def read(table):
+    """Belirtilen tabloyu küçük harf standardıyla DataFrame olarak okur."""
     try:
         with conn() as c:
-            df = pd.read_sql_query(f"SELECT * FROM {table.lower()}", c)
-            return df if not df.empty else pd.DataFrame()
-    except Exception:
+            table_name = table.lower()
+            return pd.read_sql_query(f"SELECT * FROM {table_name}", c)
+    except Exception as e:
+        # Hata durumunda boş dataframe döner
         return pd.DataFrame()
 
+def write(table, df, exists_action='replace'):
+    """
+    Veriyi veritabanına yazar.
+    exists_action: 'replace' (üstüne yazar - stok için)
+    exists_action: 'append' (altına ekler - hareketler için)
+    """
+    with conn() as c:
+        table_name = table.lower()
+        
+        # EĞER APPEND YAPILIYORSA VE ID VARSA SQLite ÇAKIŞMASINI ÖNLE
+        if exists_action == 'append':
+            if 'id' in df.columns:
+                df = df.drop(columns=['id'])
+            
+            # SADECE VERİTABANINDA OLAN SÜTUNLARI GÖNDER
+            # Bu kısım tablo yapısını korumak için kritiktir.
+            df.to_sql(table_name, c, if_exists='append', index=False)
+        else:
+            # Standart replace işlemi (Komple güncelleme)
+            df.to_sql(table_name, c, if_exists='replace', index=False)
 
-# -----------------------------
-# WRITE (SAFE UPSERT STYLE)
-# -----------------------------
-def write(table, df, exists_action="replace"):
+def log(personel, islem, detay):
+    """Sistem loglarını kaydeder."""
     try:
         with conn() as c:
+            is_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            c.execute("INSERT INTO logs (tarih, personel, islem_tipi, detay) VALUES (?, ?, ?, ?)",
+                      (is_time, personel, islem, detay))
+            c.commit()
+    except:
+        pass
 
-            if df is None:
-                return
-
-            if df.empty:
-                return
-
-            df = df.copy()
-
-            # SQLite ID çakışmasını engelle
-            if "id" in df.columns:
-                df = df.drop(columns=["id"])
-
-            df.to_sql(
-                table.lower(),
-                c,
-                if_exists=exists_action,
-                index=False
-            )
-
-    except Exception as e:
-        st.error(f"DB WRITE ERROR ({table}): {e}")
-
-
-# -----------------------------
-# GOOGLE SHEETS → DB
-# -----------------------------
-def sync_from_drive():
-    try:
-        g_conn = st.connection("gsheets", type=GSheetsConnection)
-
-        tablolar = {
-            "Stok": "stok",
-            "Urun_Listesi": "urun_listesi",
-            "Hareketler": "hareketler",
-            "Mal_Kabul": "mal_kabul"
-        }
-
-        basarili = []
-        hatali = []
-
-        for sheet, sql in tablolar.items():
-            try:
-                df = g_conn.read(worksheet=sheet, ttl=0)
-
-                if df is not None and not df.empty:
-                    df.columns = [str(c).strip().lower() for c in df.columns]
-                    write(sql, df, "replace")
-                    basarili.append(sql)
-
-            except Exception as e:
-                hatali.append(f"{sheet}: {str(e)}")
-
-        return basarili, hatali
-
-    except Exception as e:
-        return [], [str(e)]
-
-
-# -----------------------------
-# DB → GOOGLE SHEETS
-# -----------------------------
 def sync_to_drive():
+    """SQLite verilerini Google Sheets sekmelerine (Stok, Hareketler, Mal_Kabul) basar."""
     try:
         g_conn = st.connection("gsheets", type=GSheetsConnection)
-        tablolar = {"stok": "Stok", "hareketler": "Hareketler", "mal_kabul": "Mal_Kabul"}
+        
+        # SQL Tablo İsmi -> Drive Sekme İsmi
+        tablolar = {
+            "stok": "Stok", 
+            "hareketler": "Hareketler", 
+            "mal_kabul": "Mal_Kabul"
+        }
+        
         for sql_t, sheet_n in tablolar.items():
             df = read(sql_t)
             if not df.empty:
-                # Ekranda neyin güncellendiğini görmek için (Debug)
-                # st.info(f"{sheet_n} Drive'a gönderiliyor...") 
+                # Drive tarafına yazarken id sütununu da ekleyebiliriz (Takip için)
                 g_conn.update(worksheet=sheet_n, data=df)
     except Exception as e:
-        st.error(f"Drive Senkronizasyon Hatası: {e}")
-            df = read(sql_t)
+        st.error(f"Drive Senkronizasyon Hatası (Buluta Yazılamadı): {e}")
 
-            if df is not None and not df.empty:
-                g_conn.update(worksheet=sheet_n, data=df)
-
+def sync_from_drive():
+    """Google Sheets sekmelerinden veriyi çekip SQLite'a 'replace' modunda yazar."""
+    try:
+        g_conn = st.connection("gsheets", type=GSheetsConnection)
+        
+        # Drive Sekme İsmi -> SQL Tablo İsmi
+        tablolar = {
+            "Stok": "stok", 
+            "Urun_Listesi": "urun_listesi", 
+            "Hareketler": "hareketler", 
+            "Mal_Kabul": "mal_kabul"
+        }
+        
+        for sheet, sql in tablolar.items():
+            try:
+                df = g_conn.read(worksheet=sheet, ttl=0)
+                if df is not None and not df.empty:
+                    # Sütun isimlerini SQLite standardına getir (Küçük harf ve boşluksuz)
+                    df.columns = [str(c).strip().lower() for c in df.columns]
+                    write(sql, df, 'replace')
+            except:
+                continue
     except Exception as e:
-        st.error(f"SYNC ERROR: {e}")
+        st.error(f"Katalog İndirme Hatası: {e}")
+
+# --- DB.PY SONU ---

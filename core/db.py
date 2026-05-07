@@ -1,69 +1,74 @@
 import sqlite3
 import pandas as pd
+from datetime import datetime
+import streamlit as st
+from streamlit_gsheets import GSheetsConnection
 
-DB_PATH = "wms.db"
+DB = "depo.db"
 
-def get_conn():
-    return sqlite3.connect(DB_PATH, check_same_thread=False)
+def conn():
+    return sqlite3.connect(DB, check_same_thread=False, timeout=60)
 
 def init_db():
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS stok (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        kod TEXT,
-        isim TEXT,
-        miktar REAL,
-        adres TEXT
-    )
-    """)
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS hareketler (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        tarih TEXT,
-        tip TEXT,
-        kod TEXT,
-        isim TEXT,
-        miktar REAL,
-        kaynak TEXT,
-        hedef TEXT
-    )
-    """)
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS mal_kabul (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        tarih TEXT,
-        irsaliye TEXT,
-        tedarikci TEXT,
-        kod TEXT,
-        isim TEXT,
-        miktar REAL
-    )
-    """)
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS sayim (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        tarih TEXT,
-        kod TEXT,
-        miktar REAL
-    )
-    """)
-
-    conn.commit()
-    conn.close()
+    with conn() as c:
+        c.execute("PRAGMA journal_mode=WAL;")
+        cur = c.cursor()
+        # ANA TABLOLAR (KÜÇÜK HARF STANDARDI)
+        cur.execute("CREATE TABLE IF NOT EXISTS stok (id INTEGER PRIMARY KEY AUTOINCREMENT, kod TEXT, isim TEXT, adres TEXT, miktar REAL, durum TEXT)")
+        cur.execute("CREATE TABLE IF NOT EXISTS hareketler (id INTEGER PRIMARY KEY AUTOINCREMENT, tarih TEXT, islem TEXT, kod TEXT, isim TEXT, kaynak TEXT, hedef TEXT, miktar REAL, user TEXT, aciklama TEXT)")
+        cur.execute("CREATE TABLE IF NOT EXISTS urun_listesi (kod TEXT PRIMARY KEY, isim TEXT, birim TEXT, adres TEXT)")
+        
+        # PATRONUN EMRİ: MAL KABUL TABLOSU
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS mal_kabul (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tarih TEXT,
+            irsaliye_no TEXT,
+            siparis_no TEXT,
+            tedarikci TEXT,
+            kod TEXT,
+            isim TEXT,
+            miktar REAL,
+            adres TEXT,
+            personel TEXT
+        )
+        """)
+        c.commit()
 
 def read(table):
-    conn = get_conn()
-    df = pd.read_sql(f"SELECT * FROM {table}", conn)
-    conn.close()
-    return df
+    try:
+        with conn() as c:
+            # Okurken küçük harfe zorla
+            return pd.read_sql_query(f"SELECT * FROM {table.lower()}", c)
+    except:
+        return pd.DataFrame()
 
-def write(table, df, mode="append"):
-    conn = get_conn()
-    df.to_sql(table, conn, if_exists=mode, index=False)
-    conn.close()
+def write(table, df, exists_action='replace'):
+    with conn() as c:
+        table_name = table.lower() # ASLA BÜYÜK HARF YOK
+        
+        # Güvenlik: append sırasında id varsa düşür
+        if exists_action == 'append' and 'id' in df.columns:
+            df = df.drop(columns=['id'])
+            
+        df.to_sql(table_name, c, if_exists=exists_action, index=False)
+
+def sync_to_drive():
+    g_conn = st.connection("gsheets", type=GSheetsConnection)
+    # Drive sekmeleri büyük harf kalabilir, ama SQL her zaman küçük
+    tablolar = {"stok": "Stok", "hareketler": "Hareketler", "mal_kabul": "Mal_Kabul"}
+    for sql_t, sheet_n in tablolar.items():
+        df = read(sql_t)
+        if not df.empty:
+            g_conn.update(worksheet=sheet_n, data=df)
+
+def sync_from_drive():
+    g_conn = st.connection("gsheets", type=GSheetsConnection)
+    tablolar = {"Stok": "stok", "Urun_Listesi": "urun_listesi", "Hareketler": "hareketler", "Mal_Kabul": "mal_kabul"}
+    for sheet, sql in tablolar.items():
+        try:
+            df = g_conn.read(worksheet=sheet, ttl=0)
+            if not df.empty:
+                df.columns = [str(c).strip().lower() for c in df.columns]
+                write(sql, df, 'replace')
+        except: pass

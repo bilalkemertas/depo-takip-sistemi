@@ -87,7 +87,7 @@ def run():
 
     if st.session_state.gecici_liste:
         for i, item in enumerate(st.session_state.gecici_liste):
-            with st.expander(f"{i+1}. {item['İşlem']} | {item['Kod']} | {item['Miktar']}"):
+            with st.expander(f"{i+1}. {item['İşlem']} | {item['Kod']} | {item['Miktar']} Adet"):
                 if st.button(f"🗑️ Bu Satırı Sil", key=f"del_{i}"):
                     st.session_state.gecici_liste.pop(i); st.rerun()
 
@@ -98,9 +98,7 @@ def run():
                 st.session_state.gecici_liste = [] 
                 
                 df_stok = db.read("stok")
-                
-                # --- PATRONUN EMRİ: SÜTUN ZIRHLAMA ---
-                # Eğer stok tablosu boşsa veya 'kod' sütunu yoksa, doğru yapıyı kuruyoruz.
+                # SÜTUN GARANTİSİ
                 if df_stok.empty or 'kod' not in df_stok.columns:
                     df_stok = pd.DataFrame(columns=["kod", "isim", "adres", "miktar", "durum"])
                 
@@ -114,15 +112,11 @@ def run():
                     
                     if satir["İşlem"] == "GİRİŞ":
                         mask = (df_stok['kod'] == satir["Kod"]) & (df_stok['adres'] == satir["Hedef"])
-                        if mask.any(): 
-                            df_stok.loc[mask, 'miktar'] += satir["Miktar"]
-                        else:
-                            new_row = pd.DataFrame([{"kod": satir["Kod"], "isim": satir["İsim"], "adres": satir["Hedef"], "miktar": satir["Miktar"], "durum": satir["Durum"]}])
-                            df_stok = pd.concat([df_stok, new_row], ignore_index=True)
+                        if mask.any(): df_stok.loc[mask, 'miktar'] += satir["Miktar"]
+                        else: df_stok = pd.concat([df_stok, pd.DataFrame([{"kod": satir["Kod"], "isim": satir["İsim"], "adres": satir["Hedef"], "miktar": satir["Miktar"], "durum": satir["Durum"]}])], ignore_index=True)
                     elif satir["İşlem"] == "ÇIKIŞ":
                         mask = (df_stok['kod'] == satir["Kod"]) & (df_stok['adres'] == satir["Kaynak"])
-                        if mask.any():
-                            df_stok.loc[mask, 'miktar'] = max(0, df_stok.loc[mask, 'miktar'].values[0] - satir["Miktar"])
+                        if mask.any(): df_stok.loc[mask, 'miktar'] = max(0, df_stok.loc[mask, 'miktar'].values[0] - satir["Miktar"])
 
                 db.write("hareketler", yeni_hkt_df, exists_action='append')
                 db.write("stok", df_stok, exists_action='replace')
@@ -130,6 +124,6 @@ def run():
                 db.sync_to_drive()
                 st.session_state["islem_basarili"] = True; st.cache_data.clear(); st.rerun()
             except Exception as e:
-                st.error(f"Sütun Hatası Giderilemedi: {e}")
+                st.error(f"Hata detayı: {e}")
 
 def run_transfer(): run()

@@ -7,7 +7,8 @@ from streamlit_gsheets import GSheetsConnection
 DB = "depo.db"
 
 def conn():
-    return sqlite3.connect(DB, check_same_thread=False, timeout=30)
+    # Timeout'u artırdık ki 'Database is locked' hatası vermesin
+    return sqlite3.connect(DB, check_same_thread=False, timeout=60)
 
 def init_db():
     with conn() as c:
@@ -21,30 +22,21 @@ def init_db():
 def read(table):
     try:
         with conn() as c:
-            # Tablo ismini küçük harfe zorlayarak SQLite uyumunu garanti et
             return pd.read_sql_query(f"SELECT * FROM {table.lower()}", c)
     except:
         return pd.DataFrame()
 
-# --- HATA ÇÖZÜCÜ: APPEND ÇAKIŞMASINI BİTİREN YAZMA MANTIĞI ---
+# --- PATRONUN İSTEDİĞİ SAF VE ÇALIŞAN WRITE ---
 def write(table, df, exists_action='replace'):
     with conn() as c:
         table_name = table.lower()
         
-        if exists_action == 'append':
-            # Veritabanındaki gerçek sütun isimlerini al
-            cursor = c.execute(f"PRAGMA table_info({table_name})")
-            db_cols = [col[1] for col in cursor.fetchall()]
+        # Eğer 'id' sütunu df içinde varsa ve append yapıyorsak SQLite hata verir.
+        # Bu yüzden append işleminde id'yi sessizce düşürüp SQLite'ın insafına bırakıyoruz.
+        if exists_action == 'append' and 'id' in df.columns:
+            df = df.drop(columns=['id'])
             
-            # DataFrame içindeki sütunları veritabanındakilerle eşle (id hariç)
-            # Eğer df içinde 'id' varsa onu düşür, SQLite kendi versin
-            cols_to_keep = [col for col in df.columns if col in db_cols and col != 'id']
-            df_to_save = df[cols_to_keep]
-            
-            df_to_save.to_sql(table_name, c, if_exists='append', index=False)
-        else:
-            # Stok tablosu gibi 'replace' işlemleri için standart yol
-            df.to_sql(table_name, c, if_exists='replace', index=False)
+        df.to_sql(table_name, c, if_exists=exists_action, index=False)
 
 def sync_to_drive():
     g_conn = st.connection("gsheets", type=GSheetsConnection)

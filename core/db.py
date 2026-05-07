@@ -7,6 +7,7 @@ from streamlit_gsheets import GSheetsConnection
 DB = "depo.db"
 
 def conn():
+    # Timeout artırıldı, kilitlenme hatası önlendi
     return sqlite3.connect(DB, check_same_thread=False, timeout=60)
 
 def init_db():
@@ -18,7 +19,7 @@ def init_db():
         cur.execute("CREATE TABLE IF NOT EXISTS hareketler (id INTEGER PRIMARY KEY AUTOINCREMENT, tarih TEXT, islem TEXT, kod TEXT, isim TEXT, kaynak TEXT, hedef TEXT, miktar REAL, user TEXT, aciklama TEXT)")
         cur.execute("CREATE TABLE IF NOT EXISTS urun_listesi (kod TEXT PRIMARY KEY, isim TEXT, birim TEXT, adres TEXT)")
         
-        # PATRONUN EMRİ: MAL KABUL TABLOSU
+        # PATRONUN EMRİ: MAL KABUL TABLOSU EKLENDİ
         cur.execute("""
         CREATE TABLE IF NOT EXISTS mal_kabul (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,16 +39,17 @@ def init_db():
 def read(table):
     try:
         with conn() as c:
-            # Okurken küçük harfe zorla
+            # Okurken küçük harfe zorla (Case sensitivity hatası bitti)
             return pd.read_sql_query(f"SELECT * FROM {table.lower()}", c)
     except:
         return pd.DataFrame()
 
+# --- PATRONUN KESİN ÇÖZÜMÜ: TEK MERKEZDEN YAZMA ---
 def write(table, df, exists_action='replace'):
     with conn() as c:
         table_name = table.lower() # ASLA BÜYÜK HARF YOK
         
-        # Güvenlik: append sırasında id varsa düşür
+        # Güvenlik: append sırasında id varsa düşür (Already exists hatasını keser)
         if exists_action == 'append' and 'id' in df.columns:
             df = df.drop(columns=['id'])
             
@@ -55,7 +57,6 @@ def write(table, df, exists_action='replace'):
 
 def sync_to_drive():
     g_conn = st.connection("gsheets", type=GSheetsConnection)
-    # Drive sekmeleri büyük harf kalabilir, ama SQL her zaman küçük
     tablolar = {"stok": "Stok", "hareketler": "Hareketler", "mal_kabul": "Mal_Kabul"}
     for sql_t, sheet_n in tablolar.items():
         df = read(sql_t)

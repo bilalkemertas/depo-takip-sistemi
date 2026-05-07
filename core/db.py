@@ -7,7 +7,8 @@ from streamlit_gsheets import GSheetsConnection
 DB = "depo.db"
 
 def conn():
-    return sqlite3.connect(DB, check_same_thread=False)
+    # timeout=20 ekleyerek SQLite'ın kilit açılana kadar beklemesini sağlıyoruz
+    return sqlite3.connect(DB, check_same_thread=False, timeout=20)
 
 # ---------------- INIT ----------------
 def init_db():
@@ -86,22 +87,24 @@ def init_db():
 def read(table):
     c = conn()
     try:
+        # Tablo yoksa hata vermemesi için koruma
         df = pd.read_sql_query(f"SELECT * FROM {table}", c)
     except:
         df = pd.DataFrame()
-    c.close()
+    finally:
+        c.close()
     return df
 
-# ---------------- WRITE (TABLO ÇAKIŞMASINI ÇÖZEN KISIM) ----------------
+# ---------------- WRITE (OPERATIONAL ERROR FIX) ----------------
 def write(table, df):
     c = conn()
     try:
-        # Tablo varsa içini tamamen sil ve yeni veriyi yaz (Eski kilitleri aşar)
+        # replace yerine bazen kilitlenme olabiliyor, güvenli yazma:
         df.to_sql(table, c, if_exists="replace", index=False)
     except Exception as e:
-        # Eğer hala hata verirse tabloyu zorla düşür ve baştan yarat
-        cur = c.cursor()
-        cur.execute(f"DROP TABLE IF EXISTS {table}")
+        # Eğer tablo meşgulse 1 saniye bekleyip tekrar dene (Agresif Mod)
+        import time
+        time.sleep(1)
         df.to_sql(table, c, if_exists="replace", index=False)
     finally:
         c.close()
@@ -109,13 +112,15 @@ def write(table, df):
 # ---------------- LOG ----------------
 def log(user, action, detail):
     c = conn()
-    cur = c.cursor()
-    cur.execute("""
-        INSERT INTO audit_log (tarih, user, action, detay)
-        VALUES (?, ?, ?, ?)
-    """, (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user, action, detail))
-    c.commit()
-    c.close()
+    try:
+        cur = c.cursor()
+        cur.execute("""
+            INSERT INTO audit_log (tarih, user, action, detay)
+            VALUES (?, ?, ?, ?)
+        """, (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user, action, detail))
+        c.commit()
+    finally:
+        c.close()
 
 # ---------------- DRIVE EXCEL (GSHEETS) EŞİTLEME ----------------
 def get_drive_conn():
@@ -123,21 +128,31 @@ def get_drive_conn():
 
 def sync_to_drive():
     g_conn = get_drive_conn()
-    tablolar = {"stok": "Stok", "urun_listesi": "Urun_Listesi", "hareketler": "Hareketler"}
+    tablolar = {
+        "stok": "Stok",
+        "urun_listesi": "Urun_Listesi",
+        "hareketler": "Hareketler"
+    }
     for sql_table, sheet_name in tablolar.items():
         try:
             df = read(sql_table)
             if not df.empty:
                 g_conn.update(worksheet=sheet_name, data=df)
-        except: pass
+        except:
+            pass
 
 def sync_from_drive():
     g_conn = get_drive_conn()
     tablolar = {
-        "Stok": "stok", "Urun_Listesi": "urun_listesi", "Hareketler": "hareketler",
-        "Blokeli_Stok": "blokeli_stok", "Sayim_Snapshot": "sayim_snapshot", "Audit_Log": "audit_log"
+        "Stok": "stok",
+        "Urun_Listesi": "urun_listesi",
+        "Hareketler": "hareketler",
+        "Blokeli_Stok": "blokeli_stok",
+        "Sayim_Snapshot": "sayim_snapshot",
+        "Audit_Log": "audit_log"
     }
-    basarili, hatali = [], []
+    basarili = []
+    hatali = []
     for sheet_name, sql_table in tablolar.items():
         try:
             df = g_conn.read(worksheet=sheet_name, ttl=0)
@@ -145,6 +160,6 @@ def sync_from_drive():
                 df.columns = [str(c).strip().lower() for c in df.columns]
                 write(sql_table, df)
                 basarili.append(sheet_name)
-        except Exception as e:
-            hatali.append(f"{sheet_name}")
+        except:
+            hatali.append(sheet_name)
     return basarili, hatali
